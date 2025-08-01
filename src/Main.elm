@@ -171,31 +171,28 @@ reactToEvent event state =
 
                     else
                         let
-                            motorbikeWheelPositions : { front : Point2d Length.Meters (), back : Point2d Length.Meters () }
-                            motorbikeWheelPositions =
-                                motorbikeDeriveWheelPositions
+                            motorbikeBackWheelPosition : Point2d Length.Meters ()
+                            motorbikeBackWheelPosition =
+                                motorbikeDeriveBackWheelPosition
                                     { center = state.motorbikeCenter
                                     , angle = state.motorbikeAngle
                                     }
 
-                            motorbikeFrontWheelRotateDirection : Direction2d ()
-                            motorbikeFrontWheelRotateDirection =
-                                Direction2d.from
-                                    motorbikeWheelPositions.front
-                                    state.motorbikeCenter
-                                    |> Maybe.withDefault Direction2d.positiveY
-                                    |> Direction2d.rotateCounterclockwise
-
-                            motorbikeBackWheelRotateDirection : Direction2d ()
-                            motorbikeBackWheelRotateDirection =
-                                motorbikeFrontWheelRotateDirection
-                                    |> Direction2d.reverse
+                            motorbikeFrontWheelPosition : Point2d Length.Meters ()
+                            motorbikeFrontWheelPosition =
+                                motorbikeDeriveFrontWheelPosition
+                                    { center = state.motorbikeCenter
+                                    , angle = state.motorbikeAngle
+                                    }
 
                             backWheelForce : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
                             backWheelForce =
                                 wheelCombinedCollisionForce
-                                    { wheelPosition = motorbikeWheelPositions.back
-                                    , wheelRotateDirection = motorbikeBackWheelRotateDirection
+                                    { wheelPosition = motorbikeBackWheelPosition
+                                    , wheelRotateDirection =
+                                        state.motorbikeAngle
+                                            |> Direction2d.fromAngle
+                                            |> Direction2d.rotateClockwise
                                     , motorbikeVelocity = state.motorbikeVelocity
                                     , motorbikeRotationalSpeed = state.motorbikeRotationalSpeed
                                     }
@@ -203,15 +200,18 @@ reactToEvent event state =
                             frontWheelForce : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
                             frontWheelForce =
                                 wheelCombinedCollisionForce
-                                    { wheelPosition = motorbikeWheelPositions.front
-                                    , wheelRotateDirection = motorbikeFrontWheelRotateDirection
+                                    { wheelPosition = motorbikeFrontWheelPosition
+                                    , wheelRotateDirection =
+                                        state.motorbikeAngle
+                                            |> Direction2d.fromAngle
+                                            |> Direction2d.rotateCounterclockwise
                                     , motorbikeVelocity = state.motorbikeVelocity
                                     , motorbikeRotationalSpeed = state.motorbikeRotationalSpeed
                                     }
 
                             _ =
                                 case
-                                    wheelCollisionsWithDrivingPath motorbikeWheelPositions.front
+                                    wheelCollisionsWithDrivingPath motorbikeFrontWheelPosition
                                         |> List.length
                                 of
                                     0 ->
@@ -222,7 +222,7 @@ reactToEvent event state =
 
                             _ =
                                 case
-                                    wheelCollisionsWithDrivingPath motorbikeWheelPositions.front
+                                    wheelCollisionsWithDrivingPath motorbikeBackWheelPosition
                                         |> List.length
                                 of
                                     0 ->
@@ -251,11 +251,11 @@ reactToEvent event state =
                             combinedRotationalForceToApply : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
                             combinedRotationalForceToApply =
                                 Vector2d.cross
-                                    (Vector2d.from motorbikeWheelPositions.back state.motorbikeCenter)
+                                    (Vector2d.from motorbikeBackWheelPosition state.motorbikeCenter)
                                     backWheelForce
                                     |> Quantity.plus
                                         (Vector2d.cross
-                                            (Vector2d.from motorbikeWheelPositions.front state.motorbikeCenter)
+                                            (Vector2d.from motorbikeFrontWheelPosition state.motorbikeCenter)
                                             frontWheelForce
                                         )
                                     |> Quantity.over_ Length.meter
@@ -308,16 +308,11 @@ reactToEvent event state =
                                 }
                                 -> Bool
                             motorcycleCenterWouldCollide newOrientation =
-                                let
-                                    translatedWheelPositions : { front : Point2d Length.Meters (), back : Point2d Length.Meters () }
-                                    translatedWheelPositions =
-                                        motorbikeDeriveWheelPositions newOrientation
-                                in
-                                (translatedWheelPositions.back
+                                (motorbikeDeriveBackWheelPosition newOrientation
                                     |> wheelCollisionsWithDrivingPath
                                     |> listIsFilled
                                 )
-                                    || (translatedWheelPositions.front
+                                    || (motorbikeDeriveFrontWheelPosition newOrientation
                                             |> wheelCollisionsWithDrivingPath
                                             |> listIsFilled
                                        )
@@ -555,22 +550,6 @@ motorbikeDeriveFrontWheelPosition motorbikeOrientation =
                 0
                 |> Vector2d.rotateBy motorbikeOrientation.angle
             )
-
-
-{-| TODO prefer individual motorbikeDeriveBack/FrontWheelPosition
--}
-motorbikeDeriveWheelPositions :
-    { center : Point2d Length.Meters ()
-    , angle : Angle
-    }
-    ->
-        { front : Point2d Length.Meters ()
-        , back : Point2d Length.Meters ()
-        }
-motorbikeDeriveWheelPositions motorbikeOrientation =
-    { back = motorbikeDeriveBackWheelPosition motorbikeOrientation
-    , front = motorbikeDeriveFrontWheelPosition motorbikeOrientation
-    }
 
 
 arcToLineSegments :
