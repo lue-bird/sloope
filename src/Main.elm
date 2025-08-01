@@ -16,12 +16,14 @@ import Html
 import Json.Decode
 import Length exposing (Length)
 import LineSegment2d exposing (LineSegment2d)
+import Parameter1d
 import Point2d exposing (Point2d)
 import Polyline2d
 import Quantity exposing (Quantity)
 import Quantity.Interval
 import Svg exposing (Svg)
 import Svg.Attributes
+import Svg.PathD as PathD
 import Task
 import Time
 import Vector2d exposing (Vector2d)
@@ -755,10 +757,27 @@ arcToLineSegments arc =
     , end = arc.end
     , bendPercentage = arc.bendPercentage
     , approximation =
-        Arc2d.from arc.start arc.end (Angle.turns (arc.bendPercentage * 0.5))
+        drivingPathSegmentToArc2d
+            { start = arc.start
+            , end = arc.end
+            , bendPercentage = arc.bendPercentage
+            }
             |> Arc2d.approximate (Length.meters 0.03)
             |> Polyline2d.segments
     }
+
+
+drivingPathSegmentToArc2d :
+    { start : Point2d units ()
+    , end : Point2d units ()
+    , bendPercentage : Float
+    }
+    -> Arc2d units ()
+drivingPathSegmentToArc2d geometry =
+    Arc2d.from
+        geometry.start
+        geometry.end
+        (Angle.turns (geometry.bendPercentage * 0.5))
 
 
 stateToDocument : State -> Browser.Document Event
@@ -920,19 +939,29 @@ wheelRadius =
 
 drivingPathSegmentToSvg : DrivingPathSegment -> Svg Event
 drivingPathSegmentToSvg drivingPathSegment =
-    -- TODO switch to arc
-    drivingPathSegment.approximation
-        |> List.map
-            (\approximationLineSegment ->
-                svgLineSegment
-                    { lineSegment = approximationLineSegment
-                    , color = Color.rgb 0.75 0.95 1
-                    , width = drivingPathStrokeWidth
-                    }
-                    [ Svg.Attributes.strokeLinecap "round"
-                    ]
-            )
-        |> Svg.g []
+    -- drivingPathSegment.approximation
+    --     |> List.map
+    --         (\approximationLineSegment ->
+    --             svgLineSegment
+    --                 { lineSegment = approximationLineSegment
+    --                 , color = Color.rgb 0.75 0.95 1
+    --                 , width = drivingPathStrokeWidth
+    --                 }
+    --                 [ Svg.Attributes.strokeLinecap "round"
+    --                 ]
+    --         )
+    --     |> Svg.g []
+    svgArc
+        ({ start = drivingPathSegment.start
+         , end = drivingPathSegment.end
+         , bendPercentage = drivingPathSegment.bendPercentage
+         }
+            |> drivingPathSegmentToArc2d
+        )
+        [ Svg.Attributes.strokeWidth (drivingPathStrokeWidth |> Length.inMeters |> String.fromFloat)
+        , Svg.Attributes.stroke (Color.rgb 0.75 0.95 1 |> Color.toCssString)
+        , Svg.Attributes.fill (Color.rgba 0 0.5 0.5 0.15 |> Color.toCssString)
+        ]
 
 
 drivingPathStrokeWidth : Length
@@ -1084,6 +1113,48 @@ svgRotated angle elements =
             )
         ]
         elements
+
+
+svgArc : Arc2d Length.Meters () -> List (Svg.Attribute event) -> Svg event
+svgArc geometry modifiers =
+    Svg.path
+        (Svg.Attributes.d
+            (PathD.pathD
+                (PathD.M
+                    (geometry
+                        |> Arc2d.startPoint
+                        |> Point2d.toTuple Length.inMeters
+                    )
+                    :: (geometry |> pathDArc)
+                )
+            )
+            :: modifiers
+        )
+        []
+
+
+pathDArc : Arc2d.Arc2d Length.Meters coordinates -> List PathD.Segment
+pathDArc arcGeometry =
+    let
+        maxSegmentAngle : Angle
+        maxSegmentAngle =
+            Angle.turns (1 / 3)
+
+        numSegments : Int
+        numSegments =
+            1 + floor (abs (Quantity.ratio (arcGeometry |> Arc2d.sweptAngle) maxSegmentAngle))
+    in
+    Parameter1d.trailing numSegments
+        (\parameterValue ->
+            PathD.A
+                ( Arc2d.radius arcGeometry |> Length.inMeters
+                , Arc2d.radius arcGeometry |> Length.inMeters
+                )
+                0
+                False
+                (arcGeometry |> Arc2d.sweptAngle |> Quantity.greaterThanOrEqualTo Quantity.zero)
+                (Arc2d.pointOn arcGeometry parameterValue |> Point2d.toTuple Length.inMeters)
+        )
 
 
 listMapAndFirstJust : (a -> Maybe b) -> List a -> Maybe b
