@@ -171,31 +171,6 @@ reactToEvent event state =
 
                     else
                         let
-                            wheelCollisionsWithDrivingPath :
-                                Point2d Length.Meters ()
-                                -> List { segment : LineSegment2d Length.Meters (), isLeft : Bool }
-                            wheelCollisionsWithDrivingPath position =
-                                let
-                                    wheelGeometry : { radius : Length, position : Point2d Length.Meters () }
-                                    wheelGeometry =
-                                        { radius = wheelRadius
-                                        , position = position
-                                        }
-                                in
-                                drivingPathSegments
-                                    |> List.filterMap
-                                        (\segment ->
-                                            case
-                                                { points = segment, width = drivingPathStrokeWidth }
-                                                    |> lineSegment2dCollidesWithCircle wheelGeometry
-                                            of
-                                                Just isLeft ->
-                                                    Just { segment = segment, isLeft = isLeft }
-
-                                                Nothing ->
-                                                    Nothing
-                                        )
-
                             motorbikeWheelPositions : { front : Point2d Length.Meters (), back : Point2d Length.Meters () }
                             motorbikeWheelPositions =
                                 motorbikeDeriveWheelPositions
@@ -209,8 +184,7 @@ reactToEvent event state =
                                     motorbikeWheelPositions.front
                                     state.motorbikeCenter
                                     |> Maybe.withDefault Direction2d.positiveY
-                                    |> -- TODO or clockwise?
-                                       Direction2d.rotateCounterclockwise
+                                    |> Direction2d.rotateCounterclockwise
 
                             motorbikeBackWheelRotateDirection : Direction2d ()
                             motorbikeBackWheelRotateDirection =
@@ -219,53 +193,21 @@ reactToEvent event state =
 
                             backWheelForce : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
                             backWheelForce =
-                                wheelCollisionsWithDrivingPath motorbikeWheelPositions.back
-                                    |> List.foldl
-                                        (\intersectingLineSegment forceSoFar ->
-                                            forceSoFar
-                                                |> Vector2d.plus
-                                                    (state.motorbikeVelocity
-                                                        |> -- i couldn't really tell you why this seems to be necessary
-                                                           -- physics-wise. maybe a bug somewhere else?
-                                                           Vector2d.scaleBy 2
-                                                        |> Vector2d.plus
-                                                            (state.motorbikeRotationalSpeed
-                                                                |> rotationalSpeedAtAngle
-                                                                    motorbikeBackWheelRotateDirection
-                                                            )
-                                                        |> Vector2d.mirrorAcross
-                                                            (intersectingLineSegment.segment
-                                                                |> LineSegment2d.axis
-                                                                |> Maybe.withDefault Axis2d.x
-                                                            )
-                                                    )
-                                        )
-                                        Vector2d.zero
+                                wheelCombinedCollisionForce
+                                    { wheelPosition = motorbikeWheelPositions.back
+                                    , wheelRotateDirection = motorbikeBackWheelRotateDirection
+                                    , motorbikeVelocity = state.motorbikeVelocity
+                                    , motorbikeRotationalSpeed = state.motorbikeRotationalSpeed
+                                    }
 
                             frontWheelForce : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
                             frontWheelForce =
-                                wheelCollisionsWithDrivingPath motorbikeWheelPositions.front
-                                    |> List.foldl
-                                        (\intersectingLineSegment forceSoFar ->
-                                            forceSoFar
-                                                |> Vector2d.plus
-                                                    (state.motorbikeVelocity
-                                                        |> -- i couldn't really tell you why this seems to be necessary
-                                                           -- physics-wise. maybe a bug somewhere else?
-                                                           Vector2d.scaleBy 2
-                                                        |> Vector2d.plus
-                                                            (state.motorbikeRotationalSpeed
-                                                                |> rotationalSpeedAtAngle
-                                                                    motorbikeFrontWheelRotateDirection
-                                                            )
-                                                        |> Vector2d.mirrorAcross
-                                                            (intersectingLineSegment.segment
-                                                                |> LineSegment2d.axis
-                                                                |> Maybe.withDefault Axis2d.x
-                                                            )
-                                                    )
-                                        )
-                                        Vector2d.zero
+                                wheelCombinedCollisionForce
+                                    { wheelPosition = motorbikeWheelPositions.front
+                                    , wheelRotateDirection = motorbikeFrontWheelRotateDirection
+                                    , motorbikeVelocity = state.motorbikeVelocity
+                                    , motorbikeRotationalSpeed = state.motorbikeRotationalSpeed
+                                    }
 
                             _ =
                                 case
@@ -421,6 +363,62 @@ reactToEvent event state =
                         )
 
 
+wheelCombinedCollisionForce :
+    { wheelPosition : Point2d Length.Meters ()
+    , motorbikeVelocity : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
+    , motorbikeRotationalSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
+    , wheelRotateDirection : Direction2d ()
+    }
+    -> Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
+wheelCombinedCollisionForce stateBeforeCollision =
+    wheelCollisionsWithDrivingPath stateBeforeCollision.wheelPosition
+        |> List.foldl
+            (\intersectingLineSegment forceSoFar ->
+                forceSoFar
+                    |> Vector2d.plus
+                        (stateBeforeCollision.motorbikeVelocity
+                            |> Vector2d.scaleBy 2
+                            |> Vector2d.plus
+                                (stateBeforeCollision.motorbikeRotationalSpeed
+                                    |> rotationalSpeedAtAngle
+                                        stateBeforeCollision.wheelRotateDirection
+                                )
+                            |> Vector2d.mirrorAcross
+                                (intersectingLineSegment.segment
+                                    |> LineSegment2d.axis
+                                    |> Maybe.withDefault Axis2d.x
+                                )
+                        )
+            )
+            Vector2d.zero
+
+
+wheelCollisionsWithDrivingPath :
+    Point2d Length.Meters ()
+    -> List { segment : LineSegment2d Length.Meters (), isLeft : Bool }
+wheelCollisionsWithDrivingPath position =
+    let
+        wheelGeometry : { radius : Length, position : Point2d Length.Meters () }
+        wheelGeometry =
+            { radius = wheelRadius
+            , position = position
+            }
+    in
+    drivingPathSegments
+        |> List.filterMap
+            (\segment ->
+                case
+                    { points = segment, width = drivingPathStrokeWidth }
+                        |> lineSegment2dCollidesWithCircle wheelGeometry
+                of
+                    Just isLeft ->
+                        Just { segment = segment, isLeft = isLeft }
+
+                    Nothing ->
+                        Nothing
+            )
+
+
 rotationalSpeedAtAngle :
     Direction2d ()
     -> Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
@@ -529,6 +527,38 @@ minimumDeathHeight =
         |> Quantity.plus (Length.meters 6)
 
 
+motorbikeDeriveBackWheelPosition :
+    { center : Point2d Length.Meters ()
+    , angle : Angle
+    }
+    -> Point2d Length.Meters ()
+motorbikeDeriveBackWheelPosition motorbikeOrientation =
+    motorbikeOrientation.center
+        |> Point2d.translateBy
+            (Vector2d.meters
+                -((playerLengthBackToFrontAxis |> Length.inMeters) / 2)
+                0
+                |> Vector2d.rotateBy motorbikeOrientation.angle
+            )
+
+
+motorbikeDeriveFrontWheelPosition :
+    { center : Point2d Length.Meters ()
+    , angle : Angle
+    }
+    -> Point2d Length.Meters ()
+motorbikeDeriveFrontWheelPosition motorbikeOrientation =
+    motorbikeOrientation.center
+        |> Point2d.translateBy
+            (Vector2d.meters
+                ((playerLengthBackToFrontAxis |> Length.inMeters) / 2)
+                0
+                |> Vector2d.rotateBy motorbikeOrientation.angle
+            )
+
+
+{-| TODO prefer individual motorbikeDeriveBack/FrontWheelPosition
+-}
 motorbikeDeriveWheelPositions :
     { center : Point2d Length.Meters ()
     , angle : Angle
@@ -538,22 +568,8 @@ motorbikeDeriveWheelPositions :
         , back : Point2d Length.Meters ()
         }
 motorbikeDeriveWheelPositions motorbikeOrientation =
-    { back =
-        motorbikeOrientation.center
-            |> Point2d.translateBy
-                (Vector2d.meters
-                    -((playerLengthBackToFrontAxis |> Length.inMeters) / 2)
-                    0
-                    |> Vector2d.rotateBy motorbikeOrientation.angle
-                )
-    , front =
-        motorbikeOrientation.center
-            |> Point2d.translateBy
-                (Vector2d.meters
-                    ((playerLengthBackToFrontAxis |> Length.inMeters) / 2)
-                    0
-                    |> Vector2d.rotateBy motorbikeOrientation.angle
-                )
+    { back = motorbikeDeriveBackWheelPosition motorbikeOrientation
+    , front = motorbikeDeriveFrontWheelPosition motorbikeOrientation
     }
 
 
