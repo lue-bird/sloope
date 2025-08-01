@@ -154,8 +154,12 @@ reactToEvent event state =
                                 currentTime
                     in
                     if
-                        (state.motorbikeCenter |> Point2d.yCoordinate)
+                        ((state.motorbikeCenter |> Point2d.yCoordinate)
                             |> Quantity.lessThanOrEqualTo maximumDeathHeight
+                        )
+                            || ((state.motorbikeCenter |> Point2d.yCoordinate)
+                                    |> Quantity.greaterThanOrEqualTo minimumDeathHeight
+                               )
                     then
                         ( { initialState
                             | windowSize = state.windowSize
@@ -167,10 +171,10 @@ reactToEvent event state =
 
                     else
                         let
-                            wheelCollisionWithDrivingPath :
+                            wheelCollisionsWithDrivingPath :
                                 Point2d Length.Meters ()
-                                -> Maybe { segment : LineSegment2d Length.Meters (), isLeft : Bool }
-                            wheelCollisionWithDrivingPath position =
+                                -> List { segment : LineSegment2d Length.Meters (), isLeft : Bool }
+                            wheelCollisionsWithDrivingPath position =
                                 let
                                     wheelGeometry : { radius : Length, position : Point2d Length.Meters () }
                                     wheelGeometry =
@@ -179,7 +183,7 @@ reactToEvent event state =
                                         }
                                 in
                                 drivingPathSegments
-                                    |> listMapAndFirstJust
+                                    |> List.filterMap
                                         (\segment ->
                                             case
                                                 { points = segment, width = drivingPathStrokeWidth }
@@ -215,55 +219,61 @@ reactToEvent event state =
 
                             backWheelForce : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
                             backWheelForce =
-                                case wheelCollisionWithDrivingPath motorbikeWheelPositions.back of
-                                    Nothing ->
+                                wheelCollisionsWithDrivingPath motorbikeWheelPositions.back
+                                    |> List.foldl
+                                        (\intersectingLineSegment forceSoFar ->
+                                            let
+                                                _ =
+                                                    Debug.log "back wheel collide" ()
+                                            in
+                                            forceSoFar
+                                                |> Vector2d.plus
+                                                    (state.motorbikeVelocity
+                                                        |> -- i couldn't really tell you why this seems to be necessary
+                                                           -- physics-wise. maybe a bug somewhere else?
+                                                           Vector2d.scaleBy 2
+                                                        |> Vector2d.plus
+                                                            (state.motorbikeRotationalSpeed
+                                                                |> rotationalSpeedAtAngle
+                                                                    motorbikeBackWheelRotateDirection
+                                                            )
+                                                        |> Vector2d.mirrorAcross
+                                                            (intersectingLineSegment.segment
+                                                                |> LineSegment2d.axis
+                                                                |> Maybe.withDefault Axis2d.x
+                                                            )
+                                                    )
+                                        )
                                         Vector2d.zero
-
-                                    Just intersectingLineSegment ->
-                                        let
-                                            _ =
-                                                Debug.log "back wheel collide" ()
-                                        in
-                                        state.motorbikeVelocity
-                                            |> -- i couldn't really tell you why this seems to be necessary
-                                               -- physics-wise. maybe a bug somewhere else?
-                                               Vector2d.scaleBy 2
-                                            |> Vector2d.plus
-                                                (state.motorbikeRotationalSpeed
-                                                    |> rotationalSpeedAtAngle
-                                                        motorbikeBackWheelRotateDirection
-                                                )
-                                            |> Vector2d.mirrorAcross
-                                                (intersectingLineSegment.segment
-                                                    |> LineSegment2d.axis
-                                                    |> Maybe.withDefault Axis2d.x
-                                                )
 
                             frontWheelForce : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
                             frontWheelForce =
-                                case wheelCollisionWithDrivingPath motorbikeWheelPositions.front of
-                                    Nothing ->
+                                wheelCollisionsWithDrivingPath motorbikeWheelPositions.front
+                                    |> List.foldl
+                                        (\intersectingLineSegment forceSoFar ->
+                                            let
+                                                _ =
+                                                    Debug.log "front wheel collide" ()
+                                            in
+                                            forceSoFar
+                                                |> Vector2d.plus
+                                                    (state.motorbikeVelocity
+                                                        |> -- i couldn't really tell you why this seems to be necessary
+                                                           -- physics-wise. maybe a bug somewhere else?
+                                                           Vector2d.scaleBy 2
+                                                        |> Vector2d.plus
+                                                            (state.motorbikeRotationalSpeed
+                                                                |> rotationalSpeedAtAngle
+                                                                    motorbikeFrontWheelRotateDirection
+                                                            )
+                                                        |> Vector2d.mirrorAcross
+                                                            (intersectingLineSegment.segment
+                                                                |> LineSegment2d.axis
+                                                                |> Maybe.withDefault Axis2d.x
+                                                            )
+                                                    )
+                                        )
                                         Vector2d.zero
-
-                                    Just intersectingLineSegment ->
-                                        let
-                                            _ =
-                                                Debug.log "front wheel collide" ()
-                                        in
-                                        state.motorbikeVelocity
-                                            |> -- i couldn't really tell you why this seems to be necessary
-                                               -- physics-wise. maybe a bug somewhere else?
-                                               Vector2d.scaleBy 2
-                                            |> Vector2d.plus
-                                                (state.motorbikeRotationalSpeed
-                                                    |> rotationalSpeedAtAngle
-                                                        motorbikeFrontWheelRotateDirection
-                                                )
-                                            |> Vector2d.mirrorAcross
-                                                (intersectingLineSegment.segment
-                                                    |> LineSegment2d.axis
-                                                    |> Maybe.withDefault Axis2d.x
-                                                )
 
                             combinedNonRotationalForceFromWheelsToApply : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
                             combinedNonRotationalForceFromWheelsToApply =
@@ -300,12 +310,23 @@ reactToEvent event state =
                                     |> Vector2d.plus
                                         combinedNonRotationalForceToApply
                                     |> Vector2d.scaleBy 0.986
+                                    |> vector2dClampToMaxLength
+                                        (Length.meters 2
+                                            |> Quantity.per Duration.second
+                                        )
 
                             newMotorbikeRotationalSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
                             newMotorbikeRotationalSpeed =
                                 state.motorbikeRotationalSpeed
                                     |> Quantity.plus
                                         combinedRotationalForceToApply
+                                    |> Quantity.clamp
+                                        (Length.meters -1.5
+                                            |> Quantity.per Duration.second
+                                        )
+                                        (Length.meters 1.5
+                                            |> Quantity.per Duration.second
+                                        )
 
                             newMotorbikeRotationToApply : Angle
                             newMotorbikeRotationToApply =
@@ -337,12 +358,12 @@ reactToEvent event state =
                                         motorbikeDeriveWheelPositions newOrientation
                                 in
                                 (translatedWheelPositions.back
-                                    |> wheelCollisionWithDrivingPath
-                                    |> maybeIsJust
+                                    |> wheelCollisionsWithDrivingPath
+                                    |> listIsFilled
                                 )
                                     || (translatedWheelPositions.front
-                                            |> wheelCollisionWithDrivingPath
-                                            |> maybeIsJust
+                                            |> wheelCollisionsWithDrivingPath
+                                            |> listIsFilled
                                        )
                         in
                         ( { state
@@ -471,7 +492,27 @@ gravity =
 
 maximumDeathHeight : Length
 maximumDeathHeight =
-    Length.meters -4
+    drivingPathSegments
+        |> List.foldl
+            (\segment soFar ->
+                soFar
+                    |> Quantity.min (segment |> LineSegment2d.startPoint |> Point2d.yCoordinate)
+                    |> Quantity.min (segment |> LineSegment2d.endPoint |> Point2d.yCoordinate)
+            )
+            (Length.meters 0)
+
+
+minimumDeathHeight : Length
+minimumDeathHeight =
+    drivingPathSegments
+        |> List.foldl
+            (\segment soFar ->
+                soFar
+                    |> Quantity.max (segment |> LineSegment2d.startPoint |> Point2d.yCoordinate)
+                    |> Quantity.max (segment |> LineSegment2d.endPoint |> Point2d.yCoordinate)
+            )
+            (Length.meters 0)
+        |> Quantity.plus (Length.meters 6)
 
 
 motorbikeDeriveWheelPositions :
@@ -745,6 +786,19 @@ drivingPathSegments =
         |> List.concat
 
 
+vector2dClampToMaxLength : Quantity Float units -> Vector2d units () -> Vector2d units ()
+vector2dClampToMaxLength lengthMaximum vector2d =
+    if vector2d |> Vector2d.length |> Quantity.greaterThan lengthMaximum then
+        Vector2d.withLength lengthMaximum
+            (vector2d
+                |> Vector2d.direction
+                |> Maybe.withDefault Direction2d.positiveY
+            )
+
+    else
+        vector2d
+
+
 colorTransparent : Color
 colorTransparent =
     Color.rgba 0 0 0 0
@@ -827,11 +881,11 @@ whileItIs keepChanging change initial =
 
 {-| Prefer pattern matching when possible
 -}
-maybeIsJust : Maybe a -> Bool
-maybeIsJust maybe =
-    case maybe of
-        Just _ ->
+listIsFilled : List a -> Bool
+listIsFilled list =
+    case list of
+        _ :: _ ->
             True
 
-        Nothing ->
+        [] ->
             False
