@@ -1,7 +1,7 @@
 > in development
 
 # veloop
-ride your motorbike on a line with loops and tricks and try not to break your neck.
+ride your motorbike on a line with loops and tricks and try not to fall.
 
 Made for the [gmtk game jam 2025](https://itch.io/jam/gmtk-2025)
 
