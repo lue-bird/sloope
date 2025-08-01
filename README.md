@@ -25,7 +25,6 @@ and open the shown http link.
 - menu as in a start button
 - music
 - sound effect, pitch/intensity directly mapped from wheel movement
-- make the motorbike a bit more pretty
 
 too small bugs to probably matter
 - wheels on both sides of a line should be prevented by adding collision to the connection from back to front wheel

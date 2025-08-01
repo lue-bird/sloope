@@ -181,7 +181,7 @@ reactToEvent event state =
                     state.playerInputSpeed
                         |> Quantity.plus
                             (Length.meters
-                                (0.1
+                                (0.11
                                     * (case gameplayKey of
                                         GameplayKeyArrowLeft ->
                                             -1
@@ -193,7 +193,7 @@ reactToEvent event state =
                                 |> Quantity.per Duration.second
                             )
                         |> quantityClampAbsToAtMost
-                            (Length.meters 0.29
+                            (Length.meters 0.14
                                 |> Quantity.per Duration.second
                             )
               }
@@ -750,7 +750,7 @@ lineSegment2dCollidesWithCircle circle lineSegment =
 
 gravity : Vector2d (Quantity.Rate (Quantity.Rate Length.Meters Duration.Seconds) Duration.Seconds) ()
 gravity =
-    Vector2d.meters 0 -1
+    Vector2d.meters 0 -2
         |> Vector2d.per Duration.second
         |> Vector2d.per Duration.second
 
@@ -876,8 +876,29 @@ stateToDocument state =
                     cameraPosition =
                         state.motorbikeCenter |> Point2d.toMeters
                 in
-                drivingPath
+                [ drivingPath
                     |> List.map drivingPathSegmentToSvg
+                    |> Svg.g []
+                , svgTranslated { x = 0, y = 0.84 }
+                    [ svgScaled { x = 1, y = -1 }
+                        [ Svg.text_
+                            [ Svg.Attributes.fontSize "0.2"
+                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                            ]
+                            [ Svg.text "arrow keys →/← to" ]
+                        ]
+                    ]
+                , svgTranslated { x = 0, y = 0.65 }
+                    [ svgScaled { x = 1, y = -1 }
+                        [ Svg.text_
+                            [ Svg.Attributes.fontSize "0.2"
+                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                            , Svg.Attributes.fontWeight "bold"
+                            ]
+                            [ Svg.text "accelerate forwards/backwards" ]
+                        ]
+                    ]
+                ]
                     |> svgTranslated
                         { x = -cameraPosition.x
                         , y = -cameraPosition.y
@@ -928,27 +949,110 @@ motorbikeToSvg state =
         [ motorbikeWheelToSvg
             { position = motorbikeBackPosition
             , angle = state.wheelAngle
+            , playerInputSpeed = state.playerInputSpeed
+            }
+        , motorbikeWheelToSvg
+            { position = motorbikeFrontPosition
+            , angle = state.wheelAngle
+            , playerInputSpeed = state.playerInputSpeed
             }
         , svgLineSegment
             { lineSegment =
                 LineSegment2d.from
                     motorbikeBackPosition
                     motorbikeFrontPosition
-            , color = motorbikeColor
+            , color = motorbikeColor state.playerInputSpeed
             , width = motorbikeStrokeWidth
             }
             [ Svg.Attributes.strokeLinecap "round"
             ]
-        , motorbikeWheelToSvg
-            { position = motorbikeFrontPosition
-            , angle = state.wheelAngle
+        , svgLineSegment
+            { lineSegment =
+                LineSegment2d.from
+                    (Point2d.meters
+                        0
+                        -((playerLengthBackToFrontAxis |> Length.inMeters) / 8)
+                    )
+                    (Point2d.meters
+                        0
+                        ((playerLengthBackToFrontAxis |> Length.inMeters) / 8)
+                    )
+            , color = motorbikeColor state.playerInputSpeed
+            , width = motorbikeStrokeWidth |> Quantity.half
             }
+            [ Svg.Attributes.strokeLinecap "round"
+            ]
+        , svgLineSegment
+            { lineSegment =
+                LineSegment2d.from
+                    (Point2d.meters
+                        0
+                        -((playerLengthBackToFrontAxis |> Length.inMeters) / 8)
+                    )
+                    (Point2d.meters
+                        ((playerLengthBackToFrontAxis |> Length.inMeters) / 2)
+                        0
+                    )
+            , color = motorbikeColor state.playerInputSpeed
+            , width = motorbikeStrokeWidth |> Quantity.half
+            }
+            [ Svg.Attributes.strokeLinecap "round"
+            ]
+        , svgLineSegment
+            { lineSegment =
+                LineSegment2d.from
+                    (Point2d.meters
+                        0
+                        ((playerLengthBackToFrontAxis |> Length.inMeters) / 8)
+                    )
+                    (Point2d.meters
+                        ((playerLengthBackToFrontAxis |> Length.inMeters) / 2)
+                        0
+                    )
+            , color = motorbikeColor state.playerInputSpeed
+            , width = motorbikeStrokeWidth |> Quantity.half
+            }
+            [ Svg.Attributes.strokeLinecap "round"
+            ]
+        , svgLineSegment
+            { lineSegment =
+                LineSegment2d.from
+                    (Point2d.meters
+                        0
+                        -((playerLengthBackToFrontAxis |> Length.inMeters) / 8)
+                    )
+                    (Point2d.meters
+                        -((playerLengthBackToFrontAxis |> Length.inMeters) / 2)
+                        0
+                    )
+            , color = motorbikeColor state.playerInputSpeed
+            , width = motorbikeStrokeWidth |> Quantity.half
+            }
+            [ Svg.Attributes.strokeLinecap "round"
+            ]
+        , svgLineSegment
+            { lineSegment =
+                LineSegment2d.from
+                    (Point2d.meters
+                        0
+                        ((playerLengthBackToFrontAxis |> Length.inMeters) / 8)
+                    )
+                    (Point2d.meters
+                        -((playerLengthBackToFrontAxis |> Length.inMeters) / 2)
+                        0
+                    )
+            , color = motorbikeColor state.playerInputSpeed
+            , width = motorbikeStrokeWidth |> Quantity.half
+            }
+            [ Svg.Attributes.strokeLinecap "round"
+            ]
         ]
 
 
 motorbikeWheelToSvg :
     { position : Point2d Length.Meters ()
     , angle : Angle
+    , playerInputSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
     }
     -> Svg event_
 motorbikeWheelToSvg state =
@@ -959,8 +1063,17 @@ motorbikeWheelToSvg state =
                     LineSegment2d.from
                         (Point2d.meters 0 (wheelRadius |> Length.inMeters))
                         (Point2d.meters 0 -(wheelRadius |> Length.inMeters))
-                , color = motorbikeColor
-                , width = motorbikeStrokeWidth
+                , color = motorbikeColor state.playerInputSpeed
+                , width = motorbikeStrokeWidth |> Quantity.half
+                }
+                []
+            , svgLineSegment
+                { lineSegment =
+                    LineSegment2d.from
+                        (Point2d.meters (wheelRadius |> Length.inMeters) 0)
+                        (Point2d.meters -(wheelRadius |> Length.inMeters) 0)
+                , color = motorbikeColor state.playerInputSpeed
+                , width = motorbikeStrokeWidth |> Quantity.half
                 }
                 []
             , Svg.circle
@@ -972,7 +1085,10 @@ motorbikeWheelToSvg state =
                         |> Length.inMeters
                         |> String.fromFloat
                     )
-                , Svg.Attributes.stroke (motorbikeColor |> Color.toCssString)
+                , Svg.Attributes.stroke
+                    (motorbikeColor state.playerInputSpeed
+                        |> Color.toCssString
+                    )
                 , Svg.Attributes.fill (colorTransparent |> Color.toCssString)
                 ]
                 []
@@ -986,9 +1102,21 @@ motorbikeStrokeWidth =
         |> Quantity.multiplyBy 0.25
 
 
-motorbikeColor : Color
-motorbikeColor =
-    Color.rgb 0.8 0.6 0
+motorbikeColor : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds) -> Color
+motorbikeColor playerInputSpeed =
+    let
+        signedPercentage =
+            (playerInputSpeed
+                |> Quantity.for Duration.second
+                |> Length.inMeters
+            )
+                * 20
+                |> Basics.clamp -1 1
+    in
+    Color.rgb
+        (0.7 + 0.3 * signedPercentage)
+        0.6
+        (Basics.max 0 (-0.4 * signedPercentage))
 
 
 playerLengthBackToFrontAxis : Length
@@ -1013,6 +1141,7 @@ drivingPathSegmentToSvg drivingPathSegment =
         [ Svg.Attributes.strokeWidth (drivingPathStrokeWidth |> Length.inMeters |> String.fromFloat)
         , Svg.Attributes.stroke (Color.rgb 0.75 0.95 1 |> Color.toCssString)
         , Svg.Attributes.fill (Color.rgba 0 0.5 0.5 0.15 |> Color.toCssString)
+        , Svg.Attributes.strokeLinecap "round"
         ]
 
 
