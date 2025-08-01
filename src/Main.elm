@@ -316,6 +316,53 @@ reactToEvent event state =
                                             |> wheelCollisionsWithDrivingPath
                                             |> listIsFilled
                                        )
+
+                            moveMotorcycleCenterWhileColliding :
+                                Point2d Length.Meters ()
+                                -> Point2d Length.Meters ()
+                            moveMotorcycleCenterWhileColliding translatedCenter =
+                                if
+                                    motorcycleCenterWouldCollide
+                                        { center = translatedCenter
+                                        , angle = newMotorbikeAngle
+                                        }
+                                then
+                                    translatedCenter
+                                        |> Point2d.translateBy
+                                            ((wheelCombinedCollisionForce
+                                                { wheelPosition =
+                                                    motorbikeDeriveBackWheelPosition
+                                                        { center = translatedCenter
+                                                        , angle = newMotorbikeAngle
+                                                        }
+                                                , wheelRotateDirection =
+                                                    newMotorbikeAngle
+                                                        |> Direction2d.fromAngle
+                                                        |> Direction2d.rotateClockwise
+                                                , motorbikeVelocity = state.motorbikeVelocity
+                                                , motorbikeRotationalSpeed = state.motorbikeRotationalSpeed
+                                                }
+                                                |> Vector2d.plus
+                                                    (wheelCombinedCollisionForce
+                                                        { wheelPosition =
+                                                            motorbikeDeriveFrontWheelPosition
+                                                                { center = translatedCenter
+                                                                , angle = newMotorbikeAngle
+                                                                }
+                                                        , wheelRotateDirection =
+                                                            newMotorbikeAngle
+                                                                |> Direction2d.fromAngle
+                                                                |> Direction2d.rotateCounterclockwise
+                                                        , motorbikeVelocity = state.motorbikeVelocity
+                                                        , motorbikeRotationalSpeed = state.motorbikeRotationalSpeed
+                                                        }
+                                                    )
+                                             )
+                                                |> Vector2d.for durationSinceLastTick
+                                            )
+
+                                else
+                                    translatedCenter
                         in
                         ( { state
                             | lastSimulationTime = Just currentTime
@@ -329,22 +376,7 @@ reactToEvent event state =
                                         }
                                 then
                                     state.motorbikeCenter
-                                        |> whileItIs
-                                            (\translatedCenter ->
-                                                motorcycleCenterWouldCollide
-                                                    { center = translatedCenter
-                                                    , angle = newMotorbikeAngle
-                                                    }
-                                            )
-                                            (Point2d.translateBy
-                                                -- if we just apply newMotorbikeVelocity
-                                                -- it might point in the wrong direction
-                                                -- same with combinedNonRotationalForceToApply
-                                                -- where the gravity might overpower the collision force.
-                                                (combinedNonRotationalForceFromWheelsToApply
-                                                    |> Vector2d.for durationSinceLastTick
-                                                )
-                                            )
+                                        |> moveMotorcycleCenterWhileColliding
 
                                 else
                                     state.motorbikeCenter
@@ -407,6 +439,8 @@ wheelCollisionsWithDrivingPath position =
                         |> lineSegment2dCollidesWithCircle wheelGeometry
                 of
                     Just isLeft ->
+                        -- TODO if the circle is close but off to the start or end,
+                        -- act like the line is a rect and bounce off the side
                         Just { segment = segment, isLeft = isLeft }
 
                     Nothing ->
