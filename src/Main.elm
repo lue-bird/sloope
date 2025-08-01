@@ -847,7 +847,7 @@ drivingPathSegmentToArc2d geometry =
 
 stateToDocument : State -> Browser.Document Event
 stateToDocument state =
-    { title = "sloope"
+    { title = "veloop"
     , body =
         [ Svg.svg
             [ Svg.Attributes.viewBox

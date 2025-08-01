@@ -1,6 +1,6 @@
 {
     "targets": {
-        "sloope": {
+        "veloop": {
             "inputs": [
                 "src/Main.elm"
             ],
