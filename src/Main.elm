@@ -4,6 +4,7 @@ module Main exposing (main)
 -- incorrectly, it's easier for my brain that way but I'm sorry!
 
 import Angle exposing (Angle)
+import Arc2d exposing (Arc2d)
 import Axis2d
 import Browser
 import Browser.Dom
@@ -15,6 +16,7 @@ import Html
 import Length exposing (Length)
 import LineSegment2d exposing (LineSegment2d)
 import Point2d exposing (Point2d)
+import Polyline2d
 import Quantity exposing (Quantity)
 import Quantity.Interval
 import Svg exposing (Svg)
@@ -500,6 +502,18 @@ motorbikeDeriveWheelPositions motorbikeOrientation =
     }
 
 
+arcToLineSegments :
+    { start : Point2d Length.Meters ()
+    , end : Point2d Length.Meters ()
+    , bendPercentage : Float
+    }
+    -> List (LineSegment2d Length.Meters ())
+arcToLineSegments arc =
+    Arc2d.from arc.start arc.end (Angle.turns (arc.bendPercentage * 0.5))
+        |> Arc2d.approximate (Length.meters 0.02)
+        |> Polyline2d.segments
+
+
 stateToDocument : State -> Browser.Document Event
 stateToDocument state =
     { title = "sloope"
@@ -712,16 +726,23 @@ type alias DrivingPathSegment =
 
 drivingPathSegments : List DrivingPathSegment
 drivingPathSegments =
-    [ LineSegment2d.from
-        (Point2d.meters -1 0.3)
-        (Point2d.meters 0 0)
-    , LineSegment2d.from
-        (Point2d.meters 0 0)
-        (Point2d.meters 1 -0.2)
-    , LineSegment2d.from
-        (Point2d.meters 1.2 -0.3)
-        (Point2d.meters 2 -3)
+    [ { start = Point2d.meters -1 0.3
+      , end = Point2d.meters 1 -0.2
+      , bendPercentage = 0.3
+      }
+        |> arcToLineSegments
+    , { start = Point2d.meters 1.2 -0.3
+      , end = Point2d.meters 2 -2
+      , bendPercentage = 0.2
+      }
+        |> arcToLineSegments
+    , { start = Point2d.meters 2 -3
+      , end = Point2d.meters 4.8 -3
+      , bendPercentage = 0.9
+      }
+        |> arcToLineSegments
     ]
+        |> List.concat
 
 
 colorTransparent : Color
