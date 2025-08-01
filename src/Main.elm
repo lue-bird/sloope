@@ -13,6 +13,7 @@ import Color exposing (Color)
 import Direction2d exposing (Direction2d)
 import Duration exposing (Duration)
 import Html
+import Json.Decode
 import Length exposing (Length)
 import LineSegment2d exposing (LineSegment2d)
 import Point2d exposing (Point2d)
@@ -62,6 +63,7 @@ type Event
     = WindowSized { width : Float, height : Float }
     | StartTimeReceived Time.Posix
     | SimulationTick Time.Posix
+    | GameplayKeyDown GameplayKey
 
 
 main : Program () State Event
@@ -120,8 +122,32 @@ stateToSubscriptions _ =
         )
     , Time.every (1000 / 60)
         SimulationTick
+    , Browser.Events.onKeyDown
+        (Json.Decode.map GameplayKeyDown gameplayKeyJsonDecoder)
     ]
         |> Sub.batch
+
+
+type GameplayKey
+    = GameplayKeyArrowLeft
+    | GameplayKeyArrowRight
+
+
+gameplayKeyJsonDecoder : Json.Decode.Decoder GameplayKey
+gameplayKeyJsonDecoder =
+    Json.Decode.andThen
+        (\key ->
+            case key of
+                "ArrowLeft" ->
+                    Json.Decode.succeed GameplayKeyArrowLeft
+
+                "ArrowRight" ->
+                    Json.Decode.succeed GameplayKeyArrowRight
+
+                _ ->
+                    Json.Decode.fail "unknown key, ignore"
+        )
+        (Json.Decode.field "key" Json.Decode.string)
 
 
 reactToEvent : Event -> State -> ( State, Cmd Event )
@@ -134,6 +160,27 @@ reactToEvent event state =
 
         StartTimeReceived startTime ->
             ( { state | startTime = Just startTime }
+            , Cmd.none
+            )
+
+        GameplayKeyDown gameplayKey ->
+            -- TODO this is very primitive
+            -- instead try e.g. checking for ground contact
+            -- and spin the wheels etc
+            ( { state
+                | motorbikeVelocity =
+                    state.motorbikeVelocity
+                        |> Vector2d.plus
+                            (case gameplayKey of
+                                GameplayKeyArrowLeft ->
+                                    Vector2d.meters -1 0
+                                        |> Vector2d.per Duration.second
+
+                                GameplayKeyArrowRight ->
+                                    Vector2d.meters 1 0
+                                        |> Vector2d.per Duration.second
+                            )
+              }
             , Cmd.none
             )
 
