@@ -234,8 +234,8 @@ reactToEvent event state =
                                                 Debug.log "back wheel collide" ()
                                         in
                                         state.motorbikeVelocity
-                                            |> -- TODO why?
-                                               Vector2d.scaleBy 2.5
+                                            |> -- TODO eliminate by applying newVelo until unstuck
+                                               Vector2d.scaleBy 2
                                             |> Vector2d.plus
                                                 (state.motorbikeRotationalSpeed
                                                     |> rotationalSpeedAtAngle
@@ -259,8 +259,8 @@ reactToEvent event state =
                                                 Debug.log "front wheel collide" ()
                                         in
                                         state.motorbikeVelocity
-                                            |> -- TODO why?
-                                               Vector2d.scaleBy 2.5
+                                            |> -- TODO eliminate by applying newVelo until unstuck
+                                               Vector2d.scaleBy 2
                                             |> Vector2d.plus
                                                 (state.motorbikeRotationalSpeed
                                                     |> rotationalSpeedAtAngle
@@ -284,11 +284,11 @@ reactToEvent event state =
                             combinedRotationalForceToApply : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
                             combinedRotationalForceToApply =
                                 Vector2d.cross
-                                    (Vector2d.from state.motorbikeCenter motorbikeBackPosition)
+                                    (Vector2d.from motorbikeBackPosition state.motorbikeCenter)
                                     backWheelForce
                                     |> Quantity.plus
                                         (Vector2d.cross
-                                            (Vector2d.from state.motorbikeCenter motorbikeFrontPosition)
+                                            (Vector2d.from motorbikeFrontPosition state.motorbikeCenter)
                                             frontWheelForce
                                         )
                                     |> Quantity.over_ Length.meter
@@ -298,8 +298,7 @@ reactToEvent event state =
                                 state.motorbikeVelocity
                                     |> Vector2d.plus
                                         combinedNonRotationalForceToApply
-                                    |> -- is that necessary
-                                       Vector2d.scaleBy 0.993
+                                    |> Vector2d.scaleBy 0.989
 
                             newMotorbikeRotationalSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
                             newMotorbikeRotationalSpeed =
