@@ -20,6 +20,7 @@ and open the shown http link.
   To figure out: when exactly to "unsnap"?
 - add wheel movement (should directly map to user input + fade out for both wheels exactly the same rotation)
 - add shadows
+- add itch page (ugh)
 - add camera effects
 - add props
 - actual level
