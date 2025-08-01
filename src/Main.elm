@@ -209,28 +209,28 @@ reactToEvent event state =
                                     , motorbikeRotationalSpeed = state.motorbikeRotationalSpeed
                                     }
 
-                            _ =
-                                case
-                                    wheelCollisionsWithDrivingPath motorbikeFrontWheelPosition
-                                        |> List.length
-                                of
-                                    0 ->
-                                        0
-
-                                    n ->
-                                        Debug.log "front wheel collide" n
-
-                            _ =
-                                case
-                                    wheelCollisionsWithDrivingPath motorbikeBackWheelPosition
-                                        |> List.length
-                                of
-                                    0 ->
-                                        0
-
-                                    n ->
-                                        Debug.log "back wheel collide" n
-
+                            {- _ =
+                                   case
+                                       wheelCollisionsWithDrivingPath motorbikeFrontWheelPosition
+                                           |> List.length
+                                   of
+                                       0 ->
+                                           0
+                            
+                                       n ->
+                                           Debug.log "front wheel collide" n
+                            
+                               _ =
+                                   case
+                                       wheelCollisionsWithDrivingPath motorbikeBackWheelPosition
+                                           |> List.length
+                                   of
+                                       0 ->
+                                           0
+                            
+                                       n ->
+                                           Debug.log "back wheel collide" n
+                            -}
                             combinedNonRotationalForceFromWheelsToApply : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
                             combinedNonRotationalForceFromWheelsToApply =
                                 backWheelForce
@@ -411,7 +411,7 @@ wheelCombinedCollisionForce stateBeforeCollision =
                                         stateBeforeCollision.wheelRotateDirection
                                 )
                             |> Vector2d.mirrorAcross
-                                (intersectingLineSegment.segment
+                                (intersectingLineSegment
                                     |> LineSegment2d.axis
                                     |> Maybe.withDefault Axis2d.x
                                 )
@@ -422,7 +422,7 @@ wheelCombinedCollisionForce stateBeforeCollision =
 
 wheelCollisionsWithDrivingPath :
     Point2d Length.Meters ()
-    -> List { segment : LineSegment2d Length.Meters (), isLeft : Bool }
+    -> List (LineSegment2d Length.Meters ())
 wheelCollisionsWithDrivingPath position =
     let
         wheelGeometry : { radius : Length, position : Point2d Length.Meters () }
@@ -431,21 +431,131 @@ wheelCollisionsWithDrivingPath position =
             , position = position
             }
     in
-    drivingPathSegments
-        |> List.filterMap
+    drivingPath
+        |> List.concatMap
             (\segment ->
-                case
-                    { points = segment, width = drivingPathStrokeWidth }
-                        |> lineSegment2dCollidesWithCircle wheelGeometry
-                of
-                    Just isLeft ->
-                        -- TODO if the circle is close but off to the start or end,
-                        -- act like the line is a rect and bounce off the side
-                        Just { segment = segment, isLeft = isLeft }
-
-                    Nothing ->
-                        Nothing
+                wheelCollisionsWithDrivingPathSegment
+                    wheelGeometry
+                    segment
             )
+
+
+wheelCollisionsWithDrivingPathSegment :
+    { radius : Length, position : Point2d Length.Meters () }
+    -> DrivingPathSegment
+    -> List (LineSegment2d Length.Meters ())
+wheelCollisionsWithDrivingPathSegment wheelGeometry drivingPathSegment =
+    let
+        drivingPathSegmentAsVeryRoughApproximateLineSegment : LineSegment2d Length.Meters ()
+        drivingPathSegmentAsVeryRoughApproximateLineSegment =
+            LineSegment2d.from drivingPathSegment.start drivingPathSegment.end
+    in
+    -- before doing line collision:
+    -- if the wheel is close but off to the start or end,
+    -- bounce off the side
+    case drivingPathSegmentAsVeryRoughApproximateLineSegment |> LineSegment2d.axis of
+        Nothing ->
+            Debug.todo "*sob*"
+
+        Just segmentAxis ->
+            let
+                positionProjectedOntoSegmentAxis : Point2d Length.Meters ()
+                positionProjectedOntoSegmentAxis =
+                    wheelGeometry.position |> Point2d.projectOnto segmentAxis
+            in
+            if
+                (point2dDistanceBetween
+                    wheelGeometry.position
+                    drivingPathSegment.end
+                    |> Quantity.lessThanOrEqualTo
+                        ((wheelRadius |> Quantity.half)
+                            |> Quantity.plus
+                                (motorbikeStrokeWidth |> Quantity.half)
+                            |> Quantity.plus
+                                (drivingPathStrokeWidth |> Quantity.half)
+                        )
+                )
+                    && (point2dDistanceBetween
+                            positionProjectedOntoSegmentAxis
+                            drivingPathSegment.start
+                            |> Quantity.greaterThanOrEqualTo
+                                (drivingPathSegmentAsVeryRoughApproximateLineSegment
+                                    |> LineSegment2d.length
+                                )
+                       )
+            then
+                let
+                    _ =
+                        Debug.log "hit before the segment end" ()
+                in
+                [ LineSegment2d.from
+                    (Point2d.meters 0 -((drivingPathStrokeWidth |> Length.inMeters) / 2))
+                    (Point2d.meters 0 ((drivingPathStrokeWidth |> Length.inMeters) / 2))
+                    |> LineSegment2d.rotateAround Point2d.origin
+                        (segmentAxis |> Axis2d.direction |> Direction2d.toAngle)
+                    |> LineSegment2d.translateBy
+                        (drivingPathSegmentAsVeryRoughApproximateLineSegment |> LineSegment2d.endPoint |> point2dToVector)
+                ]
+
+            else if
+                (point2dDistanceBetween
+                    wheelGeometry.position
+                    drivingPathSegment.start
+                    |> Quantity.lessThanOrEqualTo
+                        ((wheelRadius |> Quantity.half)
+                            |> Quantity.plus
+                                (motorbikeStrokeWidth |> Quantity.half)
+                            |> Quantity.plus
+                                (drivingPathStrokeWidth |> Quantity.half)
+                        )
+                )
+                    && (point2dDistanceBetween
+                            positionProjectedOntoSegmentAxis
+                            (drivingPathSegmentAsVeryRoughApproximateLineSegment |> LineSegment2d.endPoint)
+                            |> Quantity.greaterThanOrEqualTo
+                                (drivingPathSegmentAsVeryRoughApproximateLineSegment
+                                    |> LineSegment2d.length
+                                )
+                       )
+            then
+                let
+                    _ =
+                        Debug.log "hit before the segment start" ()
+                in
+                [ LineSegment2d.from
+                    (Point2d.meters 0 ((drivingPathStrokeWidth |> Length.inMeters) / 2))
+                    (Point2d.meters 0 -((drivingPathStrokeWidth |> Length.inMeters) / 2))
+                    |> LineSegment2d.rotateAround Point2d.origin
+                        (segmentAxis |> Axis2d.direction |> Direction2d.toAngle)
+                    |> LineSegment2d.translateBy
+                        (drivingPathSegmentAsVeryRoughApproximateLineSegment |> LineSegment2d.startPoint |> point2dToVector)
+                ]
+
+            else
+                drivingPathSegment.approximation
+                    |> List.filterMap
+                        (\segment ->
+                            case
+                                { points = segment, width = drivingPathStrokeWidth }
+                                    |> lineSegment2dCollidesWithCircle wheelGeometry
+                            of
+                                Just _ ->
+                                    Just segment
+
+                                Nothing ->
+                                    Nothing
+                        )
+
+
+point2dDistanceBetween : Point2d units () -> Point2d units () -> Quantity Float units
+point2dDistanceBetween a b =
+    Vector2d.from a b
+        |> Vector2d.length
+
+
+point2dToVector : Point2d Length.Meters () -> Vector2d Length.Meters ()
+point2dToVector point2d =
+    point2d |> Point2d.toMeters |> Vector2d.fromMeters
 
 
 rotationalSpeedAtAngle :
@@ -533,24 +643,25 @@ gravity =
 
 maximumDeathHeight : Length
 maximumDeathHeight =
-    drivingPathSegments
+    drivingPath
         |> List.foldl
             (\segment soFar ->
                 soFar
-                    |> Quantity.min (segment |> LineSegment2d.startPoint |> Point2d.yCoordinate)
-                    |> Quantity.min (segment |> LineSegment2d.endPoint |> Point2d.yCoordinate)
+                    |> Quantity.min (segment.start |> Point2d.yCoordinate)
+                    |> Quantity.min (segment.end |> Point2d.yCoordinate)
             )
             (Length.meters 0)
+        |> Quantity.minus (Length.meters 3)
 
 
 minimumDeathHeight : Length
 minimumDeathHeight =
-    drivingPathSegments
+    drivingPath
         |> List.foldl
             (\segment soFar ->
                 soFar
-                    |> Quantity.max (segment |> LineSegment2d.startPoint |> Point2d.yCoordinate)
-                    |> Quantity.max (segment |> LineSegment2d.endPoint |> Point2d.yCoordinate)
+                    |> Quantity.max (segment.start |> Point2d.yCoordinate)
+                    |> Quantity.max (segment.end |> Point2d.yCoordinate)
             )
             (Length.meters 0)
         |> Quantity.plus (Length.meters 6)
@@ -591,11 +702,16 @@ arcToLineSegments :
     , end : Point2d Length.Meters ()
     , bendPercentage : Float
     }
-    -> List (LineSegment2d Length.Meters ())
+    -> DrivingPathSegment
 arcToLineSegments arc =
-    Arc2d.from arc.start arc.end (Angle.turns (arc.bendPercentage * 0.5))
-        |> Arc2d.approximate (Length.meters 0.02)
-        |> Polyline2d.segments
+    { start = arc.start
+    , end = arc.end
+    , bendPercentage = arc.bendPercentage
+    , approximation =
+        Arc2d.from arc.start arc.end (Angle.turns (arc.bendPercentage * 0.5))
+            |> Arc2d.approximate (Length.meters 0.03)
+            |> Polyline2d.segments
+    }
 
 
 stateToDocument : State -> Browser.Document Event
@@ -622,14 +738,14 @@ stateToDocument state =
                     Basics.min
                         state.windowSize.width
                         state.windowSize.height
-                        * 0.3
+                        * 0.2
               in
               [ let
                     cameraPosition : { x : Float, y : Float }
                     cameraPosition =
                         state.motorbikeCenter |> Point2d.toMeters
                 in
-                drivingPathSegments
+                drivingPath
                     |> List.map drivingPathSegmentToSvg
                     |> svgTranslated
                         { x = -cameraPosition.x
@@ -757,13 +873,19 @@ wheelRadius =
 
 drivingPathSegmentToSvg : DrivingPathSegment -> Svg Event
 drivingPathSegmentToSvg drivingPathSegment =
-    svgLineSegment
-        { lineSegment = drivingPathSegment
-        , color = Color.rgb 0.75 0.95 1
-        , width = drivingPathStrokeWidth
-        }
-        [ Svg.Attributes.strokeLinecap "round"
-        ]
+    -- TODO switch to arc
+    drivingPathSegment.approximation
+        |> List.map
+            (\approximationLineSegment ->
+                svgLineSegment
+                    { lineSegment = approximationLineSegment
+                    , color = Color.rgb 0.75 0.95 1
+                    , width = drivingPathStrokeWidth
+                    }
+                    [ Svg.Attributes.strokeLinecap "round"
+                    ]
+            )
+        |> Svg.g []
 
 
 drivingPathStrokeWidth : Length
@@ -805,11 +927,16 @@ svgLineSegment config modifiers =
 possibly checking by subdividing arc into segments
 -}
 type alias DrivingPathSegment =
-    LineSegment2d Length.Meters ()
+    { start : Point2d Length.Meters ()
+    , end : Point2d Length.Meters ()
+    , bendPercentage : Float
+    , approximation :
+        List (LineSegment2d Length.Meters ())
+    }
 
 
-drivingPathSegments : List DrivingPathSegment
-drivingPathSegments =
+drivingPath : List DrivingPathSegment
+drivingPath =
     [ { start = Point2d.meters -1 0.3
       , end = Point2d.meters 1 -0.2
       , bendPercentage = 0.3
@@ -825,8 +952,22 @@ drivingPathSegments =
       , bendPercentage = 0.9
       }
         |> arcToLineSegments
+    , { start = Point2d.meters 5 -3
+      , end = Point2d.meters 6.8 -3.4
+      , bendPercentage = 0.1
+      }
+        |> arcToLineSegments
+    , { start = Point2d.meters 5 -2.5
+      , end = Point2d.meters 6.8 -2.9
+      , bendPercentage = 0.1
+      }
+        |> arcToLineSegments
+    , { start = Point2d.meters 7 -3.4
+      , end = Point2d.meters 10 0
+      , bendPercentage = 0.4
+      }
+        |> arcToLineSegments
     ]
-        |> List.concat
 
 
 vector2dClampToMaxLength : Quantity Float units -> Vector2d units () -> Vector2d units ()
