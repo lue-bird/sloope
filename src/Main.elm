@@ -151,17 +151,19 @@ reactToEvent event state =
                             Duration.from lastSimulationTime
                                 currentTime
                     in
-                    ( if
+                    if
                         (state.motorbikeCenter |> Point2d.yCoordinate)
                             |> Quantity.lessThanOrEqualTo maximumDeathHeight
-                      then
-                        { initialState
+                    then
+                        ( { initialState
                             | windowSize = state.windowSize
 
                             -- re-add score, music etc
-                        }
+                          }
+                        , Cmd.none
+                        )
 
-                      else
+                    else
                         let
                             wheelCollisionWithDrivingPath :
                                 Point2d Length.Meters ()
@@ -188,30 +190,17 @@ reactToEvent event state =
                                                     Nothing
                                         )
 
-                            motorbikeBackPosition : Point2d Length.Meters ()
-                            motorbikeBackPosition =
-                                state.motorbikeCenter
-                                    |> Point2d.translateBy
-                                        (Vector2d.meters
-                                            -((playerLengthBackToFrontAxis |> Length.inMeters) / 2)
-                                            0
-                                            |> Vector2d.rotateBy state.motorbikeAngle
-                                        )
-
-                            motorbikeFrontPosition : Point2d Length.Meters ()
-                            motorbikeFrontPosition =
-                                state.motorbikeCenter
-                                    |> Point2d.translateBy
-                                        (Vector2d.meters
-                                            ((playerLengthBackToFrontAxis |> Length.inMeters) / 2)
-                                            0
-                                            |> Vector2d.rotateBy state.motorbikeAngle
-                                        )
+                            motorbikeWheelPositions : { front : Point2d Length.Meters (), back : Point2d Length.Meters () }
+                            motorbikeWheelPositions =
+                                motorbikeDeriveWheelPositions
+                                    { center = state.motorbikeCenter
+                                    , angle = state.motorbikeAngle
+                                    }
 
                             motorbikeFrontWheelRotateDirection : Direction2d ()
                             motorbikeFrontWheelRotateDirection =
                                 Direction2d.from
-                                    motorbikeFrontPosition
+                                    motorbikeWheelPositions.front
                                     state.motorbikeCenter
                                     |> Maybe.withDefault Direction2d.positiveY
                                     |> -- TODO or clockwise?
@@ -224,7 +213,7 @@ reactToEvent event state =
 
                             backWheelForce : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
                             backWheelForce =
-                                case wheelCollisionWithDrivingPath motorbikeBackPosition of
+                                case wheelCollisionWithDrivingPath motorbikeWheelPositions.back of
                                     Nothing ->
                                         Vector2d.zero
 
@@ -234,7 +223,8 @@ reactToEvent event state =
                                                 Debug.log "back wheel collide" ()
                                         in
                                         state.motorbikeVelocity
-                                            |> -- TODO eliminate by applying newVelo until unstuck
+                                            |> -- i couldn't really tell you why this seems to be necessary
+                                               -- physics-wise. maybe a bug somewhere else?
                                                Vector2d.scaleBy 2
                                             |> Vector2d.plus
                                                 (state.motorbikeRotationalSpeed
@@ -249,7 +239,7 @@ reactToEvent event state =
 
                             frontWheelForce : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
                             frontWheelForce =
-                                case wheelCollisionWithDrivingPath motorbikeFrontPosition of
+                                case wheelCollisionWithDrivingPath motorbikeWheelPositions.front of
                                     Nothing ->
                                         Vector2d.zero
 
@@ -259,7 +249,8 @@ reactToEvent event state =
                                                 Debug.log "front wheel collide" ()
                                         in
                                         state.motorbikeVelocity
-                                            |> -- TODO eliminate by applying newVelo until unstuck
+                                            |> -- i couldn't really tell you why this seems to be necessary
+                                               -- physics-wise. maybe a bug somewhere else?
                                                Vector2d.scaleBy 2
                                             |> Vector2d.plus
                                                 (state.motorbikeRotationalSpeed
@@ -272,10 +263,18 @@ reactToEvent event state =
                                                     |> Maybe.withDefault Axis2d.x
                                                 )
 
-                            combinedNonRotationalForceToApply : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
-                            combinedNonRotationalForceToApply =
+                            combinedNonRotationalForceFromWheelsToApply : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
+                            combinedNonRotationalForceFromWheelsToApply =
                                 backWheelForce
                                     |> Vector2d.plus frontWheelForce
+                                    |> Vector2d.plus
+                                        (gravity
+                                            |> Vector2d.for durationSinceLastTick
+                                        )
+
+                            combinedNonRotationalForceToApply : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
+                            combinedNonRotationalForceToApply =
+                                combinedNonRotationalForceFromWheelsToApply
                                     |> Vector2d.plus
                                         (gravity
                                             |> Vector2d.for durationSinceLastTick
@@ -284,11 +283,11 @@ reactToEvent event state =
                             combinedRotationalForceToApply : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
                             combinedRotationalForceToApply =
                                 Vector2d.cross
-                                    (Vector2d.from motorbikeBackPosition state.motorbikeCenter)
+                                    (Vector2d.from motorbikeWheelPositions.back state.motorbikeCenter)
                                     backWheelForce
                                     |> Quantity.plus
                                         (Vector2d.cross
-                                            (Vector2d.from motorbikeFrontPosition state.motorbikeCenter)
+                                            (Vector2d.from motorbikeWheelPositions.front state.motorbikeCenter)
                                             frontWheelForce
                                         )
                                     |> Quantity.over_ Length.meter
@@ -298,7 +297,7 @@ reactToEvent event state =
                                 state.motorbikeVelocity
                                     |> Vector2d.plus
                                         combinedNonRotationalForceToApply
-                                    |> Vector2d.scaleBy 0.989
+                                    |> Vector2d.scaleBy 0.986
 
                             newMotorbikeRotationalSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
                             newMotorbikeRotationalSpeed =
@@ -317,26 +316,72 @@ reactToEvent event state =
                                             * pi
                                           )
                                     )
+
+                            newMotorbikeAngle : Angle
+                            newMotorbikeAngle =
+                                state.motorbikeAngle
+                                    |> Quantity.plus newMotorbikeRotationToApply
+                                    |> Angle.normalize
+
+                            motorcycleCenterWouldCollide :
+                                { center : Point2d Length.Meters ()
+                                , angle : Angle
+                                }
+                                -> Bool
+                            motorcycleCenterWouldCollide newOrientation =
+                                let
+                                    translatedWheelPositions : { front : Point2d Length.Meters (), back : Point2d Length.Meters () }
+                                    translatedWheelPositions =
+                                        motorbikeDeriveWheelPositions newOrientation
+                                in
+                                (translatedWheelPositions.back
+                                    |> wheelCollisionWithDrivingPath
+                                    |> maybeIsJust
+                                )
+                                    || (translatedWheelPositions.front
+                                            |> wheelCollisionWithDrivingPath
+                                            |> maybeIsJust
+                                       )
                         in
-                        { state
+                        ( { state
                             | lastSimulationTime = Just currentTime
                             , motorbikeVelocity = newMotorbikeVelocity
                             , motorbikeRotationalSpeed = newMotorbikeRotationalSpeed
                             , motorbikeCenter =
-                                state.motorbikeCenter
-                                    |> Point2d.rotateAround state.motorbikeCenter
-                                        newMotorbikeRotationToApply
-                                    |> Point2d.translateBy
-                                        (newMotorbikeVelocity
-                                            |> Vector2d.for durationSinceLastTick
-                                        )
-                            , motorbikeAngle =
-                                state.motorbikeAngle
-                                    |> Quantity.plus newMotorbikeRotationToApply
-                                    |> Angle.normalize
-                        }
-                    , Cmd.none
-                    )
+                                if
+                                    motorcycleCenterWouldCollide
+                                        { center = state.motorbikeCenter
+                                        , angle = state.motorbikeAngle
+                                        }
+                                then
+                                    state.motorbikeCenter
+                                        |> whileItIs
+                                            (\translatedCenter ->
+                                                motorcycleCenterWouldCollide
+                                                    { center = translatedCenter
+                                                    , angle = newMotorbikeAngle
+                                                    }
+                                            )
+                                            (Point2d.translateBy
+                                                -- if we just apply newMotorbikeVelocity
+                                                -- it might point in the wrong direction
+                                                -- same with combinedNonRotationalForceToApply
+                                                -- where the gravity might overpower the collision force.
+                                                (combinedNonRotationalForceFromWheelsToApply
+                                                    |> Vector2d.for durationSinceLastTick
+                                                )
+                                            )
+
+                                else
+                                    state.motorbikeCenter
+                                        |> Point2d.translateBy
+                                            (newMotorbikeVelocity
+                                                |> Vector2d.for durationSinceLastTick
+                                            )
+                            , motorbikeAngle = newMotorbikeAngle
+                          }
+                        , Cmd.none
+                        )
 
 
 rotationalSpeedAtAngle :
@@ -417,7 +462,7 @@ lineSegment2dCollidesWithCircle circle lineSegment =
 
 gravity : Vector2d (Quantity.Rate (Quantity.Rate Length.Meters Duration.Seconds) Duration.Seconds) ()
 gravity =
-    Vector2d.meters 0 -0.5
+    Vector2d.meters 0 -1
         |> Vector2d.per Duration.second
         |> Vector2d.per Duration.second
 
@@ -425,6 +470,34 @@ gravity =
 maximumDeathHeight : Length
 maximumDeathHeight =
     Length.meters -4
+
+
+motorbikeDeriveWheelPositions :
+    { center : Point2d Length.Meters ()
+    , angle : Angle
+    }
+    ->
+        { front : Point2d Length.Meters ()
+        , back : Point2d Length.Meters ()
+        }
+motorbikeDeriveWheelPositions motorbikeOrientation =
+    { back =
+        motorbikeOrientation.center
+            |> Point2d.translateBy
+                (Vector2d.meters
+                    -((playerLengthBackToFrontAxis |> Length.inMeters) / 2)
+                    0
+                    |> Vector2d.rotateBy motorbikeOrientation.angle
+                )
+    , front =
+        motorbikeOrientation.center
+            |> Point2d.translateBy
+                (Vector2d.meters
+                    ((playerLengthBackToFrontAxis |> Length.inMeters) / 2)
+                    0
+                    |> Vector2d.rotateBy motorbikeOrientation.angle
+                )
+    }
 
 
 stateToDocument : State -> Browser.Document Event
@@ -720,3 +793,24 @@ listMapAndFirstJust elementToFound list =
 
                 Nothing ->
                     listMapAndFirstJust elementToFound tail
+
+
+whileItIs : (c -> Bool) -> (c -> c) -> c -> c
+whileItIs keepChanging change initial =
+    if keepChanging initial then
+        whileItIs keepChanging change (change initial)
+
+    else
+        initial
+
+
+{-| Prefer pattern matching when possible
+-}
+maybeIsJust : Maybe a -> Bool
+maybeIsJust maybe =
+    case maybe of
+        Just _ ->
+            True
+
+        Nothing ->
+            False
