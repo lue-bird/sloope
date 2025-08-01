@@ -499,101 +499,118 @@ wheelCollisionsWithDrivingPathSegment wheelGeometry drivingPathSegment =
         drivingPathSegmentAsVeryRoughApproximateLineSegment =
             LineSegment2d.from drivingPathSegment.start drivingPathSegment.end
     in
-    -- before doing line collision:
-    -- if the wheel is close but off to the start or end,
-    -- bounce off the side
-    case drivingPathSegmentAsVeryRoughApproximateLineSegment |> LineSegment2d.axis of
-        Nothing ->
-            Debug.todo "*sob*"
-
-        Just segmentAxis ->
-            let
-                positionProjectedOntoSegmentAxis : Point2d Length.Meters ()
-                positionProjectedOntoSegmentAxis =
-                    wheelGeometry.position |> Point2d.projectOnto segmentAxis
-            in
-            if
-                (point2dDistanceBetween
-                    wheelGeometry.position
-                    drivingPathSegment.end
-                    |> Quantity.lessThanOrEqualTo
-                        ((wheelRadius |> Quantity.half)
-                            |> Quantity.plus
-                                (motorbikeStrokeWidth |> Quantity.half)
-                            |> Quantity.plus
-                                (drivingPathStrokeWidth |> Quantity.half)
-                        )
+    -- small optimization: skip entire segment if too far away
+    if
+        point2dDistanceBetween
+            wheelGeometry.position
+            (drivingPathSegmentAsVeryRoughApproximateLineSegment
+                |> LineSegment2d.midpoint
+            )
+            |> Quantity.greaterThan
+                (drivingPathSegmentAsVeryRoughApproximateLineSegment
+                    |> LineSegment2d.length
+                    |> Quantity.half
+                    |> Quantity.plus playerLengthBackToFrontAxis
                 )
-                    && (point2dDistanceBetween
-                            positionProjectedOntoSegmentAxis
-                            drivingPathSegment.start
-                            |> Quantity.greaterThanOrEqualTo
-                                (drivingPathSegmentAsVeryRoughApproximateLineSegment
-                                    |> LineSegment2d.length
-                                )
-                       )
-            then
+    then
+        []
+
+    else
+        -- before doing line collision:
+        -- if the wheel is close but off to the start or end,
+        -- bounce off the side
+        case drivingPathSegmentAsVeryRoughApproximateLineSegment |> LineSegment2d.axis of
+            Nothing ->
+                Debug.todo "*sob*"
+
+            Just segmentAxis ->
                 let
-                    _ =
-                        Debug.log "hit before the segment end" ()
+                    positionProjectedOntoSegmentAxis : Point2d Length.Meters ()
+                    positionProjectedOntoSegmentAxis =
+                        wheelGeometry.position |> Point2d.projectOnto segmentAxis
                 in
-                [ LineSegment2d.from
-                    (Point2d.meters 0 -((drivingPathStrokeWidth |> Length.inMeters) / 2))
-                    (Point2d.meters 0 ((drivingPathStrokeWidth |> Length.inMeters) / 2))
-                    |> LineSegment2d.rotateAround Point2d.origin
-                        (segmentAxis |> Axis2d.direction |> Direction2d.toAngle)
-                    |> LineSegment2d.translateBy
-                        (drivingPathSegmentAsVeryRoughApproximateLineSegment |> LineSegment2d.endPoint |> point2dToVector)
-                ]
+                if
+                    (point2dDistanceBetween
+                        wheelGeometry.position
+                        drivingPathSegment.end
+                        |> Quantity.lessThanOrEqualTo
+                            ((wheelRadius |> Quantity.half)
+                                |> Quantity.plus
+                                    (motorbikeStrokeWidth |> Quantity.half)
+                                |> Quantity.plus
+                                    (drivingPathStrokeWidth |> Quantity.half)
+                            )
+                    )
+                        && (point2dDistanceBetween
+                                positionProjectedOntoSegmentAxis
+                                drivingPathSegment.start
+                                |> Quantity.greaterThanOrEqualTo
+                                    (drivingPathSegmentAsVeryRoughApproximateLineSegment
+                                        |> LineSegment2d.length
+                                    )
+                           )
+                then
+                    let
+                        _ =
+                            Debug.log "hit before the segment end" ()
+                    in
+                    [ LineSegment2d.from
+                        (Point2d.meters 0 -((drivingPathStrokeWidth |> Length.inMeters) / 2))
+                        (Point2d.meters 0 ((drivingPathStrokeWidth |> Length.inMeters) / 2))
+                        |> LineSegment2d.rotateAround Point2d.origin
+                            (segmentAxis |> Axis2d.direction |> Direction2d.toAngle)
+                        |> LineSegment2d.translateBy
+                            (drivingPathSegmentAsVeryRoughApproximateLineSegment |> LineSegment2d.endPoint |> point2dToVector)
+                    ]
 
-            else if
-                (point2dDistanceBetween
-                    wheelGeometry.position
-                    drivingPathSegment.start
-                    |> Quantity.lessThanOrEqualTo
-                        ((wheelRadius |> Quantity.half)
-                            |> Quantity.plus
-                                (motorbikeStrokeWidth |> Quantity.half)
-                            |> Quantity.plus
-                                (drivingPathStrokeWidth |> Quantity.half)
-                        )
-                )
-                    && (point2dDistanceBetween
-                            positionProjectedOntoSegmentAxis
-                            (drivingPathSegmentAsVeryRoughApproximateLineSegment |> LineSegment2d.endPoint)
-                            |> Quantity.greaterThanOrEqualTo
-                                (drivingPathSegmentAsVeryRoughApproximateLineSegment
-                                    |> LineSegment2d.length
-                                )
-                       )
-            then
-                let
-                    _ =
-                        Debug.log "hit before the segment start" ()
-                in
-                [ LineSegment2d.from
-                    (Point2d.meters 0 ((drivingPathStrokeWidth |> Length.inMeters) / 2))
-                    (Point2d.meters 0 -((drivingPathStrokeWidth |> Length.inMeters) / 2))
-                    |> LineSegment2d.rotateAround Point2d.origin
-                        (segmentAxis |> Axis2d.direction |> Direction2d.toAngle)
-                    |> LineSegment2d.translateBy
-                        (drivingPathSegmentAsVeryRoughApproximateLineSegment |> LineSegment2d.startPoint |> point2dToVector)
-                ]
+                else if
+                    (point2dDistanceBetween
+                        wheelGeometry.position
+                        drivingPathSegment.start
+                        |> Quantity.lessThanOrEqualTo
+                            ((wheelRadius |> Quantity.half)
+                                |> Quantity.plus
+                                    (motorbikeStrokeWidth |> Quantity.half)
+                                |> Quantity.plus
+                                    (drivingPathStrokeWidth |> Quantity.half)
+                            )
+                    )
+                        && (point2dDistanceBetween
+                                positionProjectedOntoSegmentAxis
+                                (drivingPathSegmentAsVeryRoughApproximateLineSegment |> LineSegment2d.endPoint)
+                                |> Quantity.greaterThanOrEqualTo
+                                    (drivingPathSegmentAsVeryRoughApproximateLineSegment
+                                        |> LineSegment2d.length
+                                    )
+                           )
+                then
+                    let
+                        _ =
+                            Debug.log "hit before the segment start" ()
+                    in
+                    [ LineSegment2d.from
+                        (Point2d.meters 0 ((drivingPathStrokeWidth |> Length.inMeters) / 2))
+                        (Point2d.meters 0 -((drivingPathStrokeWidth |> Length.inMeters) / 2))
+                        |> LineSegment2d.rotateAround Point2d.origin
+                            (segmentAxis |> Axis2d.direction |> Direction2d.toAngle)
+                        |> LineSegment2d.translateBy
+                            (drivingPathSegmentAsVeryRoughApproximateLineSegment |> LineSegment2d.startPoint |> point2dToVector)
+                    ]
 
-            else
-                drivingPathSegment.approximation
-                    |> List.filterMap
-                        (\segment ->
-                            case
-                                { points = segment, width = drivingPathStrokeWidth }
-                                    |> lineSegment2dCollidesWithCircle wheelGeometry
-                            of
-                                Just _ ->
-                                    Just segment
+                else
+                    drivingPathSegment.approximation
+                        |> List.filterMap
+                            (\segment ->
+                                case
+                                    { points = segment, width = drivingPathStrokeWidth }
+                                        |> lineSegment2dCollidesWithCircle wheelGeometry
+                                of
+                                    Just _ ->
+                                        Just segment
 
-                                Nothing ->
-                                    Nothing
-                        )
+                                    Nothing ->
+                                        Nothing
+                            )
 
 
 point2dDistanceBetween : Point2d units () -> Point2d units () -> Quantity Float units
