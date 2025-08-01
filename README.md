@@ -13,7 +13,6 @@ npx elm-watch hot
 and open the shown http link.
 
 ## TODO
-- if collides with multiple segments, divide combined force by collide count
 - introduce/mainly use path segments that instead of colliding "snap" on intersection
   → then only/mainly take user input as how much to accelerate while snapped
   To figure out: interaction with only one wheel snapped = ?

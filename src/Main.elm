@@ -266,6 +266,8 @@ reactToEvent event state =
                                         |> Vector2d.plus frontWheelForce
                                         |> -- reducing this helps keep
                                            -- the motorbike grounded
+                                           -- but currently also leads to ground clipping
+                                           -- because rotation velocity sometimes keeps going
                                            Vector2d.scaleBy 1
                                         |> vector2dClampToMaxLength
                                             (Length.meters 4
@@ -425,11 +427,11 @@ wheelCombinedCollisionForce :
     }
     -> Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
 wheelCombinedCollisionForce stateBeforeCollision =
-    wheelCollisionsWithDrivingPath stateBeforeCollision.wheelPosition
-        |> List.foldl
-            (\intersectingLineSegment forceSoFar ->
-                forceSoFar
-                    |> Vector2d.plus
+    let
+        forces =
+            wheelCollisionsWithDrivingPath stateBeforeCollision.wheelPosition
+                |> List.foldl
+                    (\intersectingLineSegment forceSoFar ->
                         (stateBeforeCollision.motorbikeVelocity
                             |> Vector2d.plus
                                 (stateBeforeCollision.motorbikeRotationalSpeed
@@ -442,8 +444,21 @@ wheelCombinedCollisionForce stateBeforeCollision =
                                     |> Maybe.withDefault Axis2d.x
                                 )
                         )
-            )
+                            :: forceSoFar
+                    )
+                    []
+    in
+    case forces of
+        [] ->
             Vector2d.zero
+
+        force0 :: force1Up ->
+            (force0 :: force1Up)
+                |> List.foldl
+                    (\force soFar -> soFar |> Vector2d.plus force)
+                    Vector2d.zero
+                |> Vector2d.scaleBy
+                    (1 / (forces |> List.length |> Basics.toFloat))
 
 
 wheelCollisionsWithDrivingPath :
