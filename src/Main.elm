@@ -32,10 +32,12 @@ type alias State =
     { windowSize : { height : Float, width : Float }
     , lastSimulationTime : Maybe Time.Posix
     , startTime : Maybe Time.Posix
+    , playerInputSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
     , motorbikeCenter : Point2d Length.Meters ()
     , motorbikeAngle : Angle
     , motorbikeVelocity : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
     , motorbikeRotationalSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
+    , motorbikeWheelAngle : Angle
     }
 
 
@@ -77,6 +79,8 @@ initialState =
     { windowSize = { width = 1920, height = 1080 }
     , lastSimulationTime = Nothing
     , startTime = Nothing
+    , playerInputSpeed =
+        Length.meters 0 |> Quantity.per Duration.second
     , motorbikeCenter =
         Point2d.meters
             (-0.1 + (playerLengthBackToFrontAxis |> Length.inMeters) / 2)
@@ -88,6 +92,7 @@ initialState =
     , motorbikeRotationalSpeed =
         Length.meters 0.02
             |> Quantity.per Duration.second
+    , motorbikeWheelAngle = Angle.turns 0.123
     }
 
 
@@ -130,6 +135,33 @@ gameplayKeyJsonDecoder =
         (Json.Decode.field "key" Json.Decode.string)
 
 
+quantityClampAbsToAtMost :
+    Quantity Float units
+    -> Quantity Float units
+    -> Quantity Float units
+quantityClampAbsToAtMost maxAbsValue quantity =
+    quantity
+        |> Quantity.clamp
+            (maxAbsValue |> Quantity.negate)
+            maxAbsValue
+
+
+quantityClampAbsToAtLeast :
+    Quantity Float units
+    -> Quantity Float units
+    -> Quantity Float units
+quantityClampAbsToAtLeast maxAbsValue quantity =
+    if quantity |> Quantity.lessThanZero then
+        quantity
+            |> Quantity.min
+                (maxAbsValue |> Quantity.negate)
+
+    else
+        quantity
+            |> Quantity.max
+                maxAbsValue
+
+
 reactToEvent : Event -> State -> ( State, Cmd Event )
 reactToEvent event state =
     case event of
@@ -144,21 +176,25 @@ reactToEvent event state =
             )
 
         GameplayKeyDown gameplayKey ->
-            -- TODO this is very primitive
-            -- instead try e.g. checking for ground contact
-            -- and spin the wheels etc
             ( { state
-                | motorbikeVelocity =
-                    state.motorbikeVelocity
-                        |> Vector2d.plus
-                            (case gameplayKey of
-                                GameplayKeyArrowLeft ->
-                                    Vector2d.meters -1 0
-                                        |> Vector2d.per Duration.second
+                | playerInputSpeed =
+                    state.playerInputSpeed
+                        |> Quantity.plus
+                            (Length.meters
+                                (0.1
+                                    * (case gameplayKey of
+                                        GameplayKeyArrowLeft ->
+                                            -1
 
-                                GameplayKeyArrowRight ->
-                                    Vector2d.meters 1 0
-                                        |> Vector2d.per Duration.second
+                                        GameplayKeyArrowRight ->
+                                            1
+                                      )
+                                )
+                                |> Quantity.per Duration.second
+                            )
+                        |> quantityClampAbsToAtMost
+                            (Length.meters 0.29
+                                |> Quantity.per Duration.second
                             )
               }
             , Cmd.none
@@ -306,10 +342,7 @@ reactToEvent event state =
                                         |> Quantity.plus
                                             combinedRotationalForceToApply
                                         |> Quantity.multiplyBy 0.995
-                                        |> Quantity.clamp
-                                            (Length.meters -0.8
-                                                |> Quantity.per Duration.second
-                                            )
+                                        |> quantityClampAbsToAtMost
                                             (Length.meters 0.8
                                                 |> Quantity.per Duration.second
                                             )
@@ -352,6 +385,18 @@ reactToEvent event state =
                                             (gravity
                                                 |> Vector2d.for durationSinceLastTick
                                             )
+                                        |> -- TODO consider instead
+                                           -- Vector2d.withLength (userInputSpeed)
+                                           -- (state.motorbikeVelocity |> direction)
+                                           Vector2d.plus
+                                            (Vector2d.meters
+                                                (state.playerInputSpeed
+                                                    |> Quantity.for Duration.second
+                                                    |> Length.inMeters
+                                                )
+                                                0
+                                                |> Vector2d.per Duration.second
+                                            )
                                         |> Vector2d.scaleBy 0.996
                                         |> vector2dClampToMaxLength
                                             (Length.meters 4
@@ -363,10 +408,7 @@ reactToEvent event state =
                                     -- TODO prefer straightened out to current velocity direction
                                     state.motorbikeRotationalSpeed
                                         |> Quantity.multiplyBy 0.995
-                                        |> Quantity.clamp
-                                            (Length.meters -0.8
-                                                |> Quantity.per Duration.second
-                                            )
+                                        |> quantityClampAbsToAtMost
                                             (Length.meters 0.8
                                                 |> Quantity.per Duration.second
                                             )
@@ -397,6 +439,24 @@ reactToEvent event state =
                                         |> Point2d.translateBy
                                             (newMotorbikeVelocity
                                                 |> Vector2d.for durationSinceLastTick
+                                            )
+                                , playerInputSpeed =
+                                    state.playerInputSpeed
+                                        |> Quantity.multiplyBy 0.95
+                                , motorbikeWheelAngle =
+                                    state.motorbikeWheelAngle
+                                        |> Quantity.minus
+                                            (Angle.turns
+                                                ((state.playerInputSpeed
+                                                    |> Quantity.for Duration.second
+                                                    |> Length.inMeters
+                                                 )
+                                                    / ((playerLengthBackToFrontAxis |> Length.inMeters)
+                                                        * pi
+                                                      )
+                                                )
+                                                |> quantityClampAbsToAtLeast
+                                                    (Angle.turns 0.01)
                                             )
                             }
                         , Cmd.none
@@ -825,6 +885,8 @@ stateToDocument state =
               , motorbikeToSvg
                     { velocity = state.motorbikeVelocity
                     , angle = state.motorbikeAngle
+                    , playerInputSpeed = state.playerInputSpeed
+                    , wheelAngle = state.motorbikeWheelAngle
                     }
               ]
                 |> svgScaled
@@ -844,33 +906,29 @@ stateToDocument state =
 motorbikeToSvg :
     { angle : Angle
     , velocity : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
+    , playerInputSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
+    , wheelAngle : Angle
     }
     -> Svg event_
 motorbikeToSvg state =
     let
         motorbikeBackPosition : Point2d Length.Meters ()
         motorbikeBackPosition =
-            Point2d.origin
-                |> Point2d.translateBy
-                    (Vector2d.meters
-                        -((playerLengthBackToFrontAxis |> Length.inMeters) / 2)
-                        0
-                        |> Vector2d.rotateBy state.angle
-                    )
+            Point2d.meters
+                -((playerLengthBackToFrontAxis |> Length.inMeters) / 2)
+                0
 
         motorbikeFrontPosition : Point2d Length.Meters ()
         motorbikeFrontPosition =
-            Point2d.origin
-                |> Point2d.translateBy
-                    (Vector2d.meters
-                        ((playerLengthBackToFrontAxis |> Length.inMeters) / 2)
-                        0
-                        |> Vector2d.rotateBy state.angle
-                    )
+            Point2d.meters
+                ((playerLengthBackToFrontAxis |> Length.inMeters) / 2)
+                0
     in
-    Svg.g []
+    svgRotated state.angle
         [ motorbikeWheelToSvg
-            { position = motorbikeBackPosition }
+            { position = motorbikeBackPosition
+            , angle = state.wheelAngle
+            }
         , svgLineSegment
             { lineSegment =
                 LineSegment2d.from
@@ -882,37 +940,43 @@ motorbikeToSvg state =
             [ Svg.Attributes.strokeLinecap "round"
             ]
         , motorbikeWheelToSvg
-            { position = motorbikeFrontPosition }
+            { position = motorbikeFrontPosition
+            , angle = state.wheelAngle
+            }
         ]
 
 
 motorbikeWheelToSvg :
-    { position : Point2d Length.Meters () }
+    { position : Point2d Length.Meters ()
+    , angle : Angle
+    }
     -> Svg event_
 motorbikeWheelToSvg state =
     svgTranslated (state.position |> Point2d.toMeters)
-        [ svgLineSegment
-            { lineSegment =
-                LineSegment2d.from
-                    (Point2d.meters 0 (wheelRadius |> Length.inMeters))
-                    (Point2d.meters 0 -(wheelRadius |> Length.inMeters))
-            , color = motorbikeColor
-            , width = motorbikeStrokeWidth
-            }
-            []
-        , Svg.circle
-            [ Svg.Attributes.cx (0 |> String.fromFloat)
-            , Svg.Attributes.cy (0 |> String.fromFloat)
-            , Svg.Attributes.r (wheelRadius |> Length.inMeters |> String.fromFloat)
-            , Svg.Attributes.strokeWidth
-                (motorbikeStrokeWidth
-                    |> Length.inMeters
-                    |> String.fromFloat
-                )
-            , Svg.Attributes.stroke (motorbikeColor |> Color.toCssString)
-            , Svg.Attributes.fill (colorTransparent |> Color.toCssString)
+        [ svgRotated state.angle
+            [ svgLineSegment
+                { lineSegment =
+                    LineSegment2d.from
+                        (Point2d.meters 0 (wheelRadius |> Length.inMeters))
+                        (Point2d.meters 0 -(wheelRadius |> Length.inMeters))
+                , color = motorbikeColor
+                , width = motorbikeStrokeWidth
+                }
+                []
+            , Svg.circle
+                [ Svg.Attributes.cx (0 |> String.fromFloat)
+                , Svg.Attributes.cy (0 |> String.fromFloat)
+                , Svg.Attributes.r (wheelRadius |> Length.inMeters |> String.fromFloat)
+                , Svg.Attributes.strokeWidth
+                    (motorbikeStrokeWidth
+                        |> Length.inMeters
+                        |> String.fromFloat
+                    )
+                , Svg.Attributes.stroke (motorbikeColor |> Color.toCssString)
+                , Svg.Attributes.fill (colorTransparent |> Color.toCssString)
+                ]
+                []
             ]
-            []
         ]
 
 
@@ -1081,6 +1145,20 @@ svgScaled scale elements =
              , scale.x |> String.fromFloat
              , ", "
              , scale.y |> String.fromFloat
+             , ")"
+             ]
+                |> String.concat
+            )
+        ]
+        elements
+
+
+svgRotated : Angle -> List (Svg event) -> Svg event
+svgRotated angle elements =
+    Svg.g
+        [ Svg.Attributes.transform
+            ([ "rotate("
+             , angle |> Angle.normalize |> Angle.inDegrees |> String.fromFloat
              , ")"
              ]
                 |> String.concat

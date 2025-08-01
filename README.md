@@ -14,10 +14,9 @@ and open the shown http link.
 
 ## TODO
 - introduce/mainly use path segments that instead of colliding "snap" on intersection
-  → then only/mainly take user input as how much to accelerate while snapped
+  → then only/mainly take player input as how much to accelerate while snapped
   To figure out: interaction with only one wheel snapped = ?
   To figure out: when exactly to "unsnap"?
-- add wheel movement (should directly map to user input + fade out for both wheels exactly the same rotation)
 - add shadows
 - add itch page (ugh)
 - add camera effects
