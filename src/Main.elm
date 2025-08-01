@@ -12,7 +12,6 @@ import Browser.Events
 import Color exposing (Color)
 import Direction2d exposing (Direction2d)
 import Duration exposing (Duration)
-import Html
 import Json.Decode
 import Length exposing (Length)
 import LineSegment2d exposing (LineSegment2d)
@@ -23,7 +22,7 @@ import Quantity exposing (Quantity)
 import Quantity.Interval
 import Svg exposing (Svg)
 import Svg.Attributes
-import Svg.PathD as PathD
+import Svg.PathD
 import Task
 import Time
 import Vector2d exposing (Vector2d)
@@ -38,27 +37,6 @@ type alias State =
     , motorbikeVelocity : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
     , motorbikeRotationalSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
     }
-
-
-deriveMotorbikePosition :
-    { back : Point2d Length.Meters ()
-    , front : Point2d Length.Meters ()
-    }
-    -> Point2d Length.Meters ()
-deriveMotorbikePosition sides =
-    LineSegment2d.from sides.back sides.front
-        |> LineSegment2d.midpoint
-
-
-deriveMotorbikeVelocity :
-    { back : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
-    , front : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
-    }
-    -> Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
-deriveMotorbikeVelocity sides =
-    sides.back
-        |> Vector2d.plus sides.front
-        |> Vector2d.half
 
 
 type Event
@@ -196,12 +174,6 @@ reactToEvent event state =
                     )
 
                 Just lastSimulationTime ->
-                    let
-                        durationSinceLastTick : Duration
-                        durationSinceLastTick =
-                            Duration.from lastSimulationTime
-                                currentTime
-                    in
                     if
                         ((state.motorbikeCenter |> Point2d.yCoordinate)
                             |> Quantity.lessThanOrEqualTo maximumDeathHeight
@@ -220,6 +192,11 @@ reactToEvent event state =
 
                     else
                         let
+                            durationSinceLastTick : Duration
+                            durationSinceLastTick =
+                                Duration.from lastSimulationTime
+                                    currentTime
+
                             motorbikeBackWheelPosition : Point2d Length.Meters ()
                             motorbikeBackWheelPosition =
                                 motorbikeDeriveBackWheelPosition
@@ -280,19 +257,6 @@ reactToEvent event state =
                                        n ->
                                            Debug.log "back wheel collide" n
                             -}
-                            combinedNonRotationalForceToApply : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
-                            combinedNonRotationalForceToApply =
-                                backWheelForce
-                                    |> Vector2d.plus frontWheelForce
-                                    |> Vector2d.plus
-                                        (gravity
-                                            |> Vector2d.for durationSinceLastTick
-                                        )
-                                    |> vector2dClampToMaxLength
-                                        (Length.meters 3.2
-                                            |> Quantity.per Duration.second
-                                        )
-
                             combinedRotationalForceToApply : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
                             combinedRotationalForceToApply =
                                 Vector2d.cross
@@ -357,6 +321,20 @@ reactToEvent event state =
                                 , angle = state.motorbikeAngle
                                 }
                           then
+                            let
+                                combinedNonRotationalForceToApply : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
+                                combinedNonRotationalForceToApply =
+                                    backWheelForce
+                                        |> Vector2d.plus frontWheelForce
+                                        |> Vector2d.plus
+                                            (gravity
+                                                |> Vector2d.for durationSinceLastTick
+                                            )
+                                        |> vector2dClampToMaxLength
+                                            (Length.meters 3.2
+                                                |> Quantity.per Duration.second
+                                            )
+                            in
                             { state
                                 | lastSimulationTime = Just currentTime
                                 , motorbikeRotationalSpeed = newMotorbikeRotationalSpeed
@@ -820,7 +798,7 @@ motorbikeToSvg :
     { angle : Angle
     , velocity : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
     }
-    -> Svg event
+    -> Svg event_
 motorbikeToSvg state =
     let
         motorbikeBackPosition : Point2d Length.Meters ()
@@ -863,13 +841,8 @@ motorbikeToSvg state =
 
 motorbikeWheelToSvg :
     { position : Point2d Length.Meters () }
-    -> Svg event
+    -> Svg event_
 motorbikeWheelToSvg state =
-    let
-        position : { x : Float, y : Float }
-        position =
-            state.position |> Point2d.toMeters
-    in
     svgTranslated (state.position |> Point2d.toMeters)
         [ svgLineSegment
             { lineSegment =
@@ -919,18 +892,6 @@ wheelRadius =
 
 drivingPathSegmentToSvg : DrivingPathSegment -> Svg Event
 drivingPathSegmentToSvg drivingPathSegment =
-    -- drivingPathSegment.approximation
-    --     |> List.map
-    --         (\approximationLineSegment ->
-    --             svgLineSegment
-    --                 { lineSegment = approximationLineSegment
-    --                 , color = Color.rgb 0.75 0.95 1
-    --                 , width = drivingPathStrokeWidth
-    --                 }
-    --                 [ Svg.Attributes.strokeLinecap "round"
-    --                 ]
-    --         )
-    --     |> Svg.g []
     svgArc
         ({ start = drivingPathSegment.start
          , end = drivingPathSegment.end
@@ -1081,26 +1042,12 @@ svgScaled scale elements =
         elements
 
 
-svgRotated : Angle -> List (Svg event) -> Svg event
-svgRotated angle elements =
-    Svg.g
-        [ Svg.Attributes.transform
-            ([ "rotate("
-             , angle |> Angle.normalize |> Angle.inDegrees |> String.fromFloat
-             , ")"
-             ]
-                |> String.concat
-            )
-        ]
-        elements
-
-
 svgArc : Arc2d Length.Meters () -> List (Svg.Attribute event) -> Svg event
 svgArc geometry modifiers =
     Svg.path
         (Svg.Attributes.d
-            (PathD.pathD
-                (PathD.M
+            (Svg.PathD.pathD
+                (Svg.PathD.M
                     (geometry
                         |> Arc2d.startPoint
                         |> Point2d.toTuple Length.inMeters
@@ -1113,7 +1060,7 @@ svgArc geometry modifiers =
         []
 
 
-pathDArc : Arc2d.Arc2d Length.Meters coordinates -> List PathD.Segment
+pathDArc : Arc2d.Arc2d Length.Meters coordinates_ -> List Svg.PathD.Segment
 pathDArc arcGeometry =
     let
         maxSegmentAngle : Angle
@@ -1126,7 +1073,7 @@ pathDArc arcGeometry =
     in
     Parameter1d.trailing numSegments
         (\parameterValue ->
-            PathD.A
+            Svg.PathD.A
                 ( Arc2d.radius arcGeometry |> Length.inMeters
                 , Arc2d.radius arcGeometry |> Length.inMeters
                 )
@@ -1137,33 +1084,9 @@ pathDArc arcGeometry =
         )
 
 
-listMapAndFirstJust : (a -> Maybe b) -> List a -> Maybe b
-listMapAndFirstJust elementToFound list =
-    case list of
-        [] ->
-            Nothing
-
-        head :: tail ->
-            case head |> elementToFound of
-                Just found ->
-                    Just found
-
-                Nothing ->
-                    listMapAndFirstJust elementToFound tail
-
-
-whileItIs : (c -> Bool) -> (c -> c) -> c -> c
-whileItIs keepChanging change initial =
-    if keepChanging initial then
-        whileItIs keepChanging change (change initial)
-
-    else
-        initial
-
-
 {-| Prefer pattern matching when possible
 -}
-listIsFilled : List a -> Bool
+listIsFilled : List a_ -> Bool
 listIsFilled list =
     case list of
         _ :: _ ->
