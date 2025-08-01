@@ -196,33 +196,46 @@ reactToEvent event state =
                             durationSinceLastTick =
                                 Duration.from lastSimulationTime
                                     currentTime
+
+                            motorbikeCenterPeekingNextTick : Point2d Length.Meters ()
+                            motorbikeCenterPeekingNextTick =
+                                state.motorbikeCenter
+                                    |> Point2d.translateBy
+                                        (state.motorbikeVelocity
+                                            |> Vector2d.for durationSinceLastTick
+                                        )
+
+                            motorbikeAnglePeekingNextTick : Angle
+                            motorbikeAnglePeekingNextTick =
+                                state.motorbikeAngle
+                                    |> Quantity.plus
+                                        (Angle.turns
+                                            ((state.motorbikeRotationalSpeed
+                                                |> Quantity.for durationSinceLastTick
+                                                |> Length.inMeters
+                                             )
+                                                / ((playerLengthBackToFrontAxis |> Length.inMeters)
+                                                    * pi
+                                                  )
+                                            )
+                                        )
+                                    |> Angle.normalize
                         in
                         ( if
                             motorcycleWouldCollide
-                                -- TODO maybe check one step into the future instead
-                                { center = state.motorbikeCenter
-                                , angle = state.motorbikeAngle
+                                { center = motorbikeCenterPeekingNextTick
+                                , angle = motorbikeAnglePeekingNextTick
                                 }
                           then
                             let
-                                motorbikeBackWheelPosition : Point2d Length.Meters ()
-                                motorbikeBackWheelPosition =
-                                    motorbikeDeriveBackWheelPosition
-                                        { center = state.motorbikeCenter
-                                        , angle = state.motorbikeAngle
-                                        }
-
-                                motorbikeFrontWheelPosition : Point2d Length.Meters ()
-                                motorbikeFrontWheelPosition =
-                                    motorbikeDeriveFrontWheelPosition
-                                        { center = state.motorbikeCenter
-                                        , angle = state.motorbikeAngle
-                                        }
-
                                 backWheelForce : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
                                 backWheelForce =
                                     wheelCombinedCollisionForce
-                                        { wheelPosition = motorbikeBackWheelPosition
+                                        { wheelPosition =
+                                            motorbikeDeriveBackWheelPosition
+                                                { center = motorbikeCenterPeekingNextTick
+                                                , angle = motorbikeAnglePeekingNextTick
+                                                }
                                         , wheelRotateDirection =
                                             state.motorbikeAngle
                                                 |> Direction2d.fromAngle
@@ -234,7 +247,11 @@ reactToEvent event state =
                                 frontWheelForce : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
                                 frontWheelForce =
                                     wheelCombinedCollisionForce
-                                        { wheelPosition = motorbikeFrontWheelPosition
+                                        { wheelPosition =
+                                            motorbikeDeriveFrontWheelPosition
+                                                { center = motorbikeCenterPeekingNextTick
+                                                , angle = motorbikeAnglePeekingNextTick
+                                                }
                                         , wheelRotateDirection =
                                             state.motorbikeAngle
                                                 |> Direction2d.fromAngle
@@ -247,13 +264,9 @@ reactToEvent event state =
                                 combinedNonRotationalForceToApply =
                                     backWheelForce
                                         |> Vector2d.plus frontWheelForce
-                                        |> -- |> Vector2d.plus
-                                           --     (gravity
-                                           --         |> Vector2d.for durationSinceLastTick
-                                           --     )
-                                           -- reducing this helps keep
+                                        |> -- reducing this helps keep
                                            -- the motorbike grounded
-                                           Vector2d.scaleBy 0.8
+                                           Vector2d.scaleBy 1
                                         |> vector2dClampToMaxLength
                                             (Length.meters 4
                                                 |> Quantity.per Duration.second
@@ -261,20 +274,32 @@ reactToEvent event state =
 
                                 combinedRotationalForceToApply : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
                                 combinedRotationalForceToApply =
-                                    -- TODO adapt
                                     Vector2d.cross
-                                        (Vector2d.from motorbikeBackWheelPosition state.motorbikeCenter)
+                                        (Vector2d.from
+                                            (motorbikeDeriveBackWheelPosition
+                                                { center = state.motorbikeCenter
+                                                , angle = state.motorbikeAngle
+                                                }
+                                            )
+                                            state.motorbikeCenter
+                                        )
                                         backWheelForce
                                         |> Quantity.plus
                                             (Vector2d.cross
-                                                (Vector2d.from motorbikeFrontWheelPosition state.motorbikeCenter)
+                                                (Vector2d.from
+                                                    (motorbikeDeriveFrontWheelPosition
+                                                        { center = state.motorbikeCenter
+                                                        , angle = state.motorbikeAngle
+                                                        }
+                                                    )
+                                                    state.motorbikeCenter
+                                                )
                                                 frontWheelForce
                                             )
                                         |> Quantity.over_ Length.meter
 
                                 newMotorbikeRotationalSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
                                 newMotorbikeRotationalSpeed =
-                                    -- TODO adapt
                                     state.motorbikeRotationalSpeed
                                         |> Quantity.plus
                                             combinedRotationalForceToApply
@@ -499,13 +524,11 @@ wheelCollisionsWithDrivingPathSegment wheelGeometry drivingPathSegment =
                                 |> Quantity.greaterThanOrEqualTo
                                     (drivingPathSegmentAsVeryRoughApproximateLineSegment
                                         |> LineSegment2d.length
+                                        |> Quantity.plus
+                                            (wheelRadius |> Quantity.multiplyBy 0.3)
                                     )
                            )
                 then
-                    let
-                        _ =
-                            Debug.log "hit before the segment end" ()
-                    in
                     [ LineSegment2d.from
                         (Point2d.meters 0 -((drivingPathStrokeWidth |> Length.inMeters) / 2))
                         (Point2d.meters 0 ((drivingPathStrokeWidth |> Length.inMeters) / 2))
@@ -533,13 +556,11 @@ wheelCollisionsWithDrivingPathSegment wheelGeometry drivingPathSegment =
                                 |> Quantity.greaterThanOrEqualTo
                                     (drivingPathSegmentAsVeryRoughApproximateLineSegment
                                         |> LineSegment2d.length
+                                        |> Quantity.plus
+                                            (wheelRadius |> Quantity.multiplyBy 0.3)
                                     )
                            )
                 then
-                    let
-                        _ =
-                            Debug.log "hit before the segment start" ()
-                    in
                     [ LineSegment2d.from
                         (Point2d.meters 0 ((drivingPathStrokeWidth |> Length.inMeters) / 2))
                         (Point2d.meters 0 -((drivingPathStrokeWidth |> Length.inMeters) / 2))
