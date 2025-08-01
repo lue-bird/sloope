@@ -222,10 +222,6 @@ reactToEvent event state =
                                 wheelCollisionsWithDrivingPath motorbikeWheelPositions.back
                                     |> List.foldl
                                         (\intersectingLineSegment forceSoFar ->
-                                            let
-                                                _ =
-                                                    Debug.log "back wheel collide" ()
-                                            in
                                             forceSoFar
                                                 |> Vector2d.plus
                                                     (state.motorbikeVelocity
@@ -251,10 +247,6 @@ reactToEvent event state =
                                 wheelCollisionsWithDrivingPath motorbikeWheelPositions.front
                                     |> List.foldl
                                         (\intersectingLineSegment forceSoFar ->
-                                            let
-                                                _ =
-                                                    Debug.log "front wheel collide" ()
-                                            in
                                             forceSoFar
                                                 |> Vector2d.plus
                                                     (state.motorbikeVelocity
@@ -274,6 +266,28 @@ reactToEvent event state =
                                                     )
                                         )
                                         Vector2d.zero
+
+                            _ =
+                                case
+                                    wheelCollisionsWithDrivingPath motorbikeWheelPositions.front
+                                        |> List.length
+                                of
+                                    0 ->
+                                        0
+
+                                    n ->
+                                        Debug.log "front wheel collide" n
+
+                            _ =
+                                case
+                                    wheelCollisionsWithDrivingPath motorbikeWheelPositions.front
+                                        |> List.length
+                                of
+                                    0 ->
+                                        0
+
+                                    n ->
+                                        Debug.log "back wheel collide" n
 
                             combinedNonRotationalForceFromWheelsToApply : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
                             combinedNonRotationalForceFromWheelsToApply =
