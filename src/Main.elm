@@ -214,7 +214,8 @@ reactToEvent event state =
                                     motorbikeFrontPosition
                                     state.motorbikeCenter
                                     |> Maybe.withDefault Direction2d.positiveY
-                                    |> Direction2d.rotateClockwise
+                                    |> -- TODO or clockwise?
+                                       Direction2d.rotateCounterclockwise
 
                             motorbikeBackWheelRotateDirection : Direction2d ()
                             motorbikeBackWheelRotateDirection =
@@ -230,9 +231,11 @@ reactToEvent event state =
                                     Just intersectingLineSegment ->
                                         let
                                             _ =
-                                                Debug.log "back wheel collide"
+                                                Debug.log "back wheel collide" ()
                                         in
                                         state.motorbikeVelocity
+                                            |> -- TODO why?
+                                               Vector2d.scaleBy 2.5
                                             |> Vector2d.plus
                                                 (state.motorbikeRotationalSpeed
                                                     |> rotationalSpeedAtAngle
@@ -253,9 +256,11 @@ reactToEvent event state =
                                     Just intersectingLineSegment ->
                                         let
                                             _ =
-                                                Debug.log "front wheel collide"
+                                                Debug.log "front wheel collide" ()
                                         in
                                         state.motorbikeVelocity
+                                            |> -- TODO why?
+                                               Vector2d.scaleBy 2.5
                                             |> Vector2d.plus
                                                 (state.motorbikeRotationalSpeed
                                                     |> rotationalSpeedAtAngle
@@ -286,8 +291,7 @@ reactToEvent event state =
                                             (Vector2d.from state.motorbikeCenter motorbikeFrontPosition)
                                             frontWheelForce
                                         )
-                                    |> -- is this correct?
-                                       Quantity.over_ Length.meter
+                                    |> Quantity.over_ Length.meter
 
                             newMotorbikeVelocity : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
                             newMotorbikeVelocity =
@@ -295,7 +299,7 @@ reactToEvent event state =
                                     |> Vector2d.plus
                                         combinedNonRotationalForceToApply
                                     |> -- is that necessary
-                                       Vector2d.scaleBy 0.98
+                                       Vector2d.scaleBy 0.993
 
                             newMotorbikeRotationalSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
                             newMotorbikeRotationalSpeed =
@@ -349,70 +353,6 @@ rotationalSpeedAtAngle angle motorbikeRotationalSpeed =
         |> Vector2d.per Duration.second
 
 
-velocityAtMotorbikeWheelToForAngle :
-    Angle
-    -> Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
-    -> Quantity Float (Quantity.Rate Angle.Radians Duration.Seconds)
-velocityAtMotorbikeWheelToForAngle angle velocity =
-    Angle.turns
-        ((velocity
-            |> Vector2d.for Duration.second
-            |> vector2dSignedLengthInDirection
-                (angle |> Angle.normalize |> Direction2d.fromAngle)
-            |> Length.inMeters
-         )
-            / (Basics.pi * (playerLengthBackToFrontAxis |> Length.inMeters))
-        )
-        |> Quantity.per Duration.second
-
-
-vector2dSignedLengthInDirection :
-    Direction2d ()
-    -> Vector2d Length.Meters ()
-    -> Quantity Float Length.Meters
-vector2dSignedLengthInDirection effectiveDirection vector2d =
-    let
-        effectiveDirectionAsVector : { x : Float, y : Float }
-        effectiveDirectionAsVector =
-            Vector2d.withLength
-                Length.meter
-                effectiveDirection
-                |> Vector2d.toMeters
-    in
-    if
-        angleSignedDifference
-            (effectiveDirection |> Direction2d.toAngle)
-            (vector2d
-                |> Vector2d.direction
-                |> Maybe.withDefault Direction2d.positiveY
-                |> Direction2d.toAngle
-            )
-            |> Quantity.abs
-            |> Quantity.lessThan (Angle.turns 0.25)
-    then
-        vector2d |> Vector2d.projectionIn effectiveDirection |> Vector2d.length
-
-    else
-        vector2d |> Vector2d.projectionIn effectiveDirection |> Vector2d.length |> Quantity.negate
-
-
-angleSignedDifference : Angle -> Angle -> Angle
-angleSignedDifference aAngle bAngle =
-    let
-        x =
-            aAngle |> Angle.normalize |> Angle.inRadians
-
-        y =
-            bAngle |> Angle.normalize |> Angle.inRadians
-    in
-    Angle.radians
-        (min
-            ((2 * pi) - abs (x - y))
-            (abs (x - y))
-        )
-        |> Angle.normalize
-
-
 {-| Just True means left, Just False means right
 -}
 lineSegment2dCollidesWithCircle :
@@ -420,62 +360,65 @@ lineSegment2dCollidesWithCircle :
     -> { points : LineSegment2d Length.Meters (), width : Length }
     -> Maybe Bool
 lineSegment2dCollidesWithCircle circle lineSegment =
-    if
-        Point2d.distanceFrom circle.position
-            (lineSegment.points |> LineSegment2d.midpoint)
-            |> Quantity.greaterThan
-                (lineSegment.points
-                    |> LineSegment2d.length
-                    |> Quantity.half
-                    |> Quantity.plus circle.radius
-                    |> Quantity.plus
-                        lineSegment.width
-                    |> Quantity.plus
-                        (motorbikeStrokeWidth |> Quantity.half)
-                )
-    then
-        Nothing
+    case lineSegment.points |> LineSegment2d.direction of
+        Nothing ->
+            Debug.todo "huh??"
 
-    else
-        let
-            signedDistanceIntervalOfLineSegmentToCircleCenter : Quantity.Interval.Interval Float Length.Meters
-            signedDistanceIntervalOfLineSegmentToCircleCenter =
-                lineSegment.points
-                    |> LineSegment2d.signedDistanceFrom
-                        (Axis2d.through circle.position
-                            (lineSegment.points |> LineSegment2d.direction |> Maybe.withDefault Direction2d.positiveY)
+        Just lineSegmentDirection ->
+            if
+                Point2d.distanceFrom circle.position
+                    (lineSegment.points |> LineSegment2d.midpoint)
+                    |> Quantity.greaterThan
+                        (lineSegment.points
+                            |> LineSegment2d.length
+                            |> Quantity.half
+                            |> Quantity.plus circle.radius
+                            |> Quantity.plus
+                                lineSegment.width
+                            |> Quantity.plus
+                                (motorbikeStrokeWidth |> Quantity.half)
                         )
-        in
-        -- since the interval is is exactly on value (because parallel)
-        -- we just check any value
-        if
-            signedDistanceIntervalOfLineSegmentToCircleCenter
-                |> Quantity.Interval.maxValue
-                |> Quantity.abs
-                |> Quantity.lessThanOrEqualTo
-                    (circle.radius
-                        |> Quantity.plus
-                            lineSegment.width
-                        |> Quantity.plus
-                            (motorbikeStrokeWidth |> Quantity.half)
-                    )
-        then
-            Just
-                ((signedDistanceIntervalOfLineSegmentToCircleCenter
-                    |> Quantity.Interval.maxValue
-                    |> Length.inMeters
-                 )
-                    >= 0
-                )
+            then
+                Nothing
 
-        else
-            Nothing
+            else
+                let
+                    signedDistanceIntervalOfLineSegmentToCircleCenter : Length
+                    signedDistanceIntervalOfLineSegmentToCircleCenter =
+                        lineSegment.points
+                            |> LineSegment2d.signedDistanceFrom
+                                (Axis2d.through circle.position
+                                    lineSegmentDirection
+                                )
+                            |> -- since the interval is is exactly on value (because parallel)
+                               -- we just check any value
+                               Quantity.Interval.maxValue
+                in
+                if
+                    signedDistanceIntervalOfLineSegmentToCircleCenter
+                        |> Quantity.abs
+                        |> Quantity.lessThanOrEqualTo
+                            (circle.radius
+                                |> Quantity.plus
+                                    (lineSegment.width |> Quantity.half)
+                                |> Quantity.plus
+                                    (motorbikeStrokeWidth |> Quantity.half)
+                            )
+                then
+                    Just
+                        ((signedDistanceIntervalOfLineSegmentToCircleCenter
+                            |> Length.inMeters
+                         )
+                            >= 0
+                        )
+
+                else
+                    Nothing
 
 
 gravity : Vector2d (Quantity.Rate (Quantity.Rate Length.Meters Duration.Seconds) Duration.Seconds) ()
 gravity =
-    -- TODO Vector2d.meters 0 -0.5
-    Vector2d.meters 0 -0.1
+    Vector2d.meters 0 -0.5
         |> Vector2d.per Duration.second
         |> Vector2d.per Duration.second
 
@@ -523,8 +466,7 @@ stateToDocument state =
                         , y = -cameraPosition.y
                         }
               , motorbikeToSvg
-                    { position = state.motorbikeCenter
-                    , velocity = state.motorbikeVelocity
+                    { velocity = state.motorbikeVelocity
                     , angle = state.motorbikeAngle
                     }
               ]
@@ -543,43 +485,47 @@ stateToDocument state =
 
 
 motorbikeToSvg :
-    { position : Point2d Length.Meters ()
-    , angle : Angle
+    { angle : Angle
     , velocity : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
     }
     -> Svg event
 motorbikeToSvg state =
-    svgTranslated (state.position |> Point2d.toMeters)
-        [ svgRotated (state.angle |> Angle.normalize)
-            (let
-                relativeBackPosition : Point2d Length.Meters ()
-                relativeBackPosition =
-                    Point2d.meters
+    let
+        motorbikeBackPosition : Point2d Length.Meters ()
+        motorbikeBackPosition =
+            Point2d.origin
+                |> Point2d.translateBy
+                    (Vector2d.meters
                         -((playerLengthBackToFrontAxis |> Length.inMeters) / 2)
                         0
+                        |> Vector2d.rotateBy state.angle
+                    )
 
-                relativeFrontPosition : Point2d Length.Meters ()
-                relativeFrontPosition =
-                    Point2d.meters
+        motorbikeFrontPosition : Point2d Length.Meters ()
+        motorbikeFrontPosition =
+            Point2d.origin
+                |> Point2d.translateBy
+                    (Vector2d.meters
                         ((playerLengthBackToFrontAxis |> Length.inMeters) / 2)
                         0
-             in
-             [ motorbikeWheelToSvg
-                { position = relativeBackPosition }
-             , svgLineSegment
-                { lineSegment =
-                    LineSegment2d.from
-                        relativeBackPosition
-                        relativeFrontPosition
-                , color = motorbikeColor
-                , width = motorbikeStrokeWidth
-                }
-                [ Svg.Attributes.strokeLinecap "round"
-                ]
-             , motorbikeWheelToSvg
-                { position = relativeFrontPosition }
-             ]
-            )
+                        |> Vector2d.rotateBy state.angle
+                    )
+    in
+    Svg.g []
+        [ motorbikeWheelToSvg
+            { position = motorbikeBackPosition }
+        , svgLineSegment
+            { lineSegment =
+                LineSegment2d.from
+                    motorbikeBackPosition
+                    motorbikeFrontPosition
+            , color = motorbikeColor
+            , width = motorbikeStrokeWidth
+            }
+            [ Svg.Attributes.strokeLinecap "round"
+            ]
+        , motorbikeWheelToSvg
+            { position = motorbikeFrontPosition }
         ]
 
 
