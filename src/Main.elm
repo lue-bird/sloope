@@ -181,7 +181,7 @@ reactToEvent event state =
                     state.playerInputSpeed
                         |> Quantity.plus
                             (Length.meters
-                                (0.11
+                                (0.16
                                     * (case gameplayKey of
                                         GameplayKeyArrowLeft ->
                                             -1
@@ -193,7 +193,7 @@ reactToEvent event state =
                                 |> Quantity.per Duration.second
                             )
                         |> quantityClampAbsToAtMost
-                            (Length.meters 0.14
+                            (Length.meters 0.18
                                 |> Quantity.per Duration.second
                             )
               }
@@ -306,7 +306,7 @@ reactToEvent event state =
                                            -- because rotation velocity sometimes keeps going
                                            Vector2d.scaleBy 1
                                         |> vector2dClampToMaxLength
-                                            (Length.meters 4
+                                            (Length.meters 3
                                                 |> Quantity.per Duration.second
                                             )
 
@@ -378,6 +378,20 @@ reactToEvent event state =
 
                           else
                             let
+                                directionToRightFacingWheel : Direction2d ()
+                                directionToRightFacingWheel =
+                                    if
+                                        state.motorbikeAngle
+                                            |> anglePointsLeft
+                                    then
+                                        state.motorbikeAngle
+                                            |> Direction2d.fromAngle
+                                            |> Direction2d.reverse
+
+                                    else
+                                        state.motorbikeAngle
+                                            |> Direction2d.fromAngle
+
                                 newMotorbikeVelocity : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
                                 newMotorbikeVelocity =
                                     state.motorbikeVelocity
@@ -385,21 +399,18 @@ reactToEvent event state =
                                             (gravity
                                                 |> Vector2d.for durationSinceLastTick
                                             )
-                                        |> -- TODO consider instead
-                                           -- Vector2d.withLength (userInputSpeed)
-                                           -- (state.motorbikeVelocity |> direction)
-                                           Vector2d.plus
-                                            (Vector2d.meters
+                                        |> Vector2d.plus
+                                            (Vector2d.withLength
+                                                -- signed length!
                                                 (state.playerInputSpeed
                                                     |> Quantity.for Duration.second
-                                                    |> Length.inMeters
                                                 )
-                                                0
+                                                directionToRightFacingWheel
                                                 |> Vector2d.per Duration.second
                                             )
                                         |> Vector2d.scaleBy 0.996
                                         |> vector2dClampToMaxLength
-                                            (Length.meters 4
+                                            (Length.meters 3
                                                 |> Quantity.per Duration.second
                                             )
 
@@ -442,21 +453,29 @@ reactToEvent event state =
                                             )
                                 , playerInputSpeed =
                                     state.playerInputSpeed
-                                        |> Quantity.multiplyBy 0.95
+                                        |> Quantity.multiplyBy 0.91
                                 , motorbikeWheelAngle =
                                     state.motorbikeWheelAngle
                                         |> Quantity.minus
                                             (Angle.turns
-                                                ((state.playerInputSpeed
+                                                (((state.playerInputSpeed
                                                     |> Quantity.for Duration.second
                                                     |> Length.inMeters
-                                                 )
+                                                    |> abs
+                                                  )
                                                     / ((playerLengthBackToFrontAxis |> Length.inMeters)
                                                         * pi
                                                       )
+                                                 )
+                                                    ^ -- keep spinning even when input is faint
+                                                      0.12
+                                                    * (state.playerInputSpeed
+                                                        |> Quantity.for Duration.second
+                                                        |> Quantity.sign
+                                                      )
                                                 )
                                                 |> quantityClampAbsToAtLeast
-                                                    (Angle.turns 0.01)
+                                                    (Angle.turns 0.004)
                                             )
                             }
                         , Cmd.none
@@ -519,6 +538,15 @@ wheelCombinedCollisionForce stateBeforeCollision =
                     Vector2d.zero
                 |> Vector2d.scaleBy
                     (1 / (forces |> List.length |> Basics.toFloat))
+
+
+anglePointsLeft : Angle -> Bool
+anglePointsLeft angle =
+    (angle
+        |> Direction2d.fromAngle
+        |> Direction2d.xComponent
+    )
+        < 0
 
 
 wheelCollisionsWithDrivingPath :
@@ -1230,6 +1258,10 @@ drivingPath =
 vector2dClampToMaxLength : Quantity Float units -> Vector2d units () -> Vector2d units ()
 vector2dClampToMaxLength lengthMaximum vector2d =
     if vector2d |> Vector2d.length |> Quantity.greaterThan lengthMaximum then
+        let
+            _ =
+                Debug.log "clamp vec2" ()
+        in
         Vector2d.withLength lengthMaximum
             (vector2d
                 |> Vector2d.direction
