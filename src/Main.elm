@@ -45,6 +45,8 @@ type alias State =
         -- the unit of this is super fake
         -- but I don't really know what it is exactly
         Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
+    , forwardsInputActive : Bool
+    , backwardsInputActive : Bool
     , motorbikeCenter : Point2d Length.Meters ()
     , motorbikeAngle : Angle
     , motorbikeVelocity : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
@@ -59,6 +61,7 @@ type Event
     | StartTimeReceived Time.Posix
     | SimulationTick Time.Posix
     | GameplayKeyDown GameplayKey
+    | GameplayKeyUp GameplayKey
 
 
 main : Program () State Event
@@ -94,6 +97,8 @@ initialState =
     , startTime = Nothing
     , playerInputSpeed =
         Length.meters 0 |> Quantity.per Duration.second
+    , forwardsInputActive = False
+    , backwardsInputActive = False
     , motorbikeCenter =
         Point2d.meters
             -0.6
@@ -123,6 +128,8 @@ stateToSubscriptions _ =
         SimulationTick
     , Browser.Events.onKeyDown
         (Json.Decode.map GameplayKeyDown gameplayKeyJsonDecoder)
+    , Browser.Events.onKeyUp
+        (Json.Decode.map GameplayKeyUp gameplayKeyJsonDecoder)
     ]
         |> Sub.batch
 
@@ -153,7 +160,9 @@ reactToEvent : Event -> State -> ( State, Cmd Event )
 reactToEvent event state =
     case event of
         WindowSized newSize ->
-            ( { state | windowSize = newSize }
+            ( { state
+                | windowSize = newSize
+              }
             , Cmd.none
             )
 
@@ -163,34 +172,22 @@ reactToEvent event state =
             )
 
         GameplayKeyDown gameplayKey ->
-            ( { state
-                | playerInputSpeed =
-                    state.playerInputSpeed
-                        |> Quantity.plus
-                            (Length.meters
-                                (0.42
-                                    * (case gameplayKey of
-                                        GameplayKeyArrowLeft ->
-                                            -1
+            ( case gameplayKey of
+                GameplayKeyArrowRight ->
+                    { state | forwardsInputActive = True }
 
-                                        GameplayKeyArrowRight ->
-                                            1
-                                      )
-                                )
-                                |> Quantity.per Duration.second
-                            )
-                        |> quantityClampAbsToAtMost
-                            (Length.meters 0.42
-                                |> Quantity.per Duration.second
-                            )
-              }
+                GameplayKeyArrowLeft ->
+                    { state | backwardsInputActive = True }
             , if
-                state.playerInputSpeed
-                    |> Quantity.abs
-                    |> Quantity.lessThan
-                        (Length.meters 0.13
-                            |> Quantity.per Duration.second
-                        )
+                Basics.not state.forwardsInputActive
+                    && Basics.not state.backwardsInputActive
+                    && (state.playerInputSpeed
+                            |> Quantity.abs
+                            |> Quantity.lessThan
+                                (Length.meters 0.1
+                                    |> Quantity.per Duration.second
+                                )
+                       )
               then
                 case gameplayKey of
                     GameplayKeyArrowLeft ->
@@ -209,6 +206,16 @@ reactToEvent event state =
 
               else
                 Cmd.none
+            )
+
+        GameplayKeyUp gameplayKey ->
+            ( case gameplayKey of
+                GameplayKeyArrowRight ->
+                    { state | forwardsInputActive = False }
+
+                GameplayKeyArrowLeft ->
+                    { state | backwardsInputActive = False }
+            , Cmd.none
             )
 
         SimulationTick currentTime ->
@@ -232,11 +239,10 @@ reactToEvent event state =
                         ( { initialState
                             | windowSize = state.windowSize
 
-                            -- re-add score, music etc
+                            -- re-add score etc
                           }
                         , Time.now
-                            |> Task.perform
-                                StartTimeReceived
+                            |> Task.perform StartTimeReceived
                         )
 
                     else
@@ -280,6 +286,29 @@ reactToEvent event state =
                                     newPlayerInputSpeed =
                                         state.playerInputSpeed
                                             |> Quantity.multiplyBy 0.89
+                                            |> Quantity.plus
+                                                (Length.meters
+                                                    (0.42
+                                                        * ((if state.forwardsInputActive then
+                                                                1
+
+                                                            else
+                                                                0
+                                                           )
+                                                            + (if state.backwardsInputActive then
+                                                                -1
+
+                                                               else
+                                                                0
+                                                              )
+                                                          )
+                                                    )
+                                                    |> Quantity.per Duration.second
+                                                )
+                                            |> quantityClampAbsToAtMost
+                                                (Length.meters 0.42
+                                                    |> Quantity.per Duration.second
+                                                )
 
                                     newMotorbikeVelocity : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
                                     newMotorbikeVelocity =
@@ -1312,24 +1341,40 @@ wheelRadius =
 
 drivingPathSegmentToSvg : DrivingPathSegment -> Svg Event
 drivingPathSegmentToSvg drivingPathSegment =
-    svgArc
-        ({ start = drivingPathSegment.start
-         , end = drivingPathSegment.end
-         , bendPercentage = drivingPathSegment.bendPercentage
-         }
-            |> drivingPathSegmentToArc2d
-        )
-        [ Svg.Attributes.strokeWidth (drivingPathStrokeWidth |> Length.inMeters |> String.fromFloat)
-        , Svg.Attributes.stroke (Color.rgba 0.75 0.95 1 1 |> Color.toCssString)
-        , Svg.Attributes.fill "none"
+    Svg.g []
+        [ svgArc
+            ({ start = drivingPathSegment.start
+             , end = drivingPathSegment.end
+             , bendPercentage = drivingPathSegment.bendPercentage
+             }
+                |> drivingPathSegmentToArc2d
+            )
+            [ Svg.Attributes.strokeWidth (drivingPathStrokeWidth |> Quantity.multiplyBy 1 |> Length.inMeters |> String.fromFloat)
+            , Svg.Attributes.stroke (Color.rgb 0.15 0.25 0.1 |> Color.toCssString)
+            , Svg.Attributes.fill "none"
+            , Svg.Attributes.strokeLinecap "round"
 
-        -- , Svg.Attributes.filter "url(#glow)"
+            -- , Svg.Attributes.filter "url(#glow)"
+            ]
+        , svgArc
+            ({ start = drivingPathSegment.start
+             , end = drivingPathSegment.end
+             , bendPercentage = drivingPathSegment.bendPercentage
+             }
+                |> drivingPathSegmentToArc2d
+            )
+            [ Svg.Attributes.strokeWidth (drivingPathStrokeWidth |> Quantity.multiplyBy 0.2 |> Length.inMeters |> String.fromFloat)
+            , Svg.Attributes.stroke (Color.rgba 0.75 0.95 1 1 |> Color.toCssString)
+            , Svg.Attributes.fill "none"
+
+            -- , Svg.Attributes.filter "url(#glow)"
+            ]
         ]
 
 
 drivingPathStrokeWidth : Length
 drivingPathStrokeWidth =
-    Length.meters 0.09
+    Length.meters 0.1
 
 
 svgLineSegment :
