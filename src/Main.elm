@@ -100,9 +100,9 @@ initialState =
     , forwardsInputActive = False
     , backwardsInputActive = False
     , motorbikeCenter =
-        Point2d.meters
-            -0.6
-            0.5
+        -- change to get a "checkpoint"
+        -- TODO Point2d.meters -0.6 0.5
+        Point2d.meters 76 5
     , motorbikeVelocity =
         Vector2d.meters 0.2 0
             |> Vector2d.per Duration.second
@@ -624,6 +624,21 @@ wheelCombinedCollisionForce stateBeforeCollision =
                     (1 / (forces |> List.length |> Basics.toFloat))
 
 
+lineSegment2dOrderEndpointsByStartXLessThanEndX :
+    LineSegment2d Length.Meters ()
+    -> LineSegment2d Length.Meters ()
+lineSegment2dOrderEndpointsByStartXLessThanEndX lineSegment2d =
+    if
+        (lineSegment2d |> LineSegment2d.startPoint |> Point2d.xCoordinate)
+            |> Quantity.greaterThanOrEqualTo
+                (lineSegment2d |> LineSegment2d.endPoint |> Point2d.xCoordinate)
+    then
+        lineSegment2d |> LineSegment2d.reverse
+
+    else
+        lineSegment2d
+
+
 wheelCollisionsWithDrivingPath :
     Point2d Length.Meters ()
     -> List (LineSegment2d Length.Meters ())
@@ -637,10 +652,19 @@ wheelCollisionsWithDrivingPath position =
     in
     drivingPath
         |> List.concatMap
-            (\segment ->
+            (\pathSegment ->
                 wheelCollisionsWithDrivingPathSegment
                     wheelGeometry
-                    segment
+                    pathSegment
+                    |> List.map
+                        (\lineSegment2d ->
+                            case pathSegment.drivingDirection of
+                                Forwards ->
+                                    lineSegment2d
+
+                                Backwards ->
+                                    lineSegment2d |> LineSegment2d.reverse
+                        )
             )
 
 
@@ -713,7 +737,10 @@ wheelCollisionsWithDrivingPathSegment wheelGeometry drivingPathSegment =
                         |> LineSegment2d.rotateAround Point2d.origin
                             (segmentAxis |> Axis2d.direction |> Direction2d.toAngle)
                         |> LineSegment2d.translateBy
-                            (drivingPathSegmentAsVeryRoughApproximateLineSegment |> LineSegment2d.endPoint |> point2dToVector)
+                            (drivingPathSegmentAsVeryRoughApproximateLineSegment
+                                |> LineSegment2d.endPoint
+                                |> point2dToVector
+                            )
                     ]
 
                 else if
@@ -745,7 +772,10 @@ wheelCollisionsWithDrivingPathSegment wheelGeometry drivingPathSegment =
                         |> LineSegment2d.rotateAround Point2d.origin
                             (segmentAxis |> Axis2d.direction |> Direction2d.toAngle)
                         |> LineSegment2d.translateBy
-                            (drivingPathSegmentAsVeryRoughApproximateLineSegment |> LineSegment2d.startPoint |> point2dToVector)
+                            (drivingPathSegmentAsVeryRoughApproximateLineSegment
+                                |> LineSegment2d.startPoint
+                                |> point2dToVector
+                            )
                     ]
 
                 else
@@ -894,12 +924,19 @@ drivingPathFullLength =
             Just drivingPathFirstArc ->
                 drivingPathFirstArc.start
         )
-        (case drivingPath |> listLast of
-            Nothing ->
-                Point2d.meters 0 0
+        (drivingPath
+            |> List.foldl
+                (\drivingPathArc soFar ->
+                    if
+                        (drivingPathArc.end |> Point2d.xCoordinate)
+                            |> Quantity.greaterThan (soFar |> Point2d.xCoordinate)
+                    then
+                        drivingPathArc.end
 
-            Just drivingPathFirstArc ->
-                drivingPathFirstArc.end
+                    else
+                        soFar
+                )
+                (Point2d.meters 0 0)
         )
         |> Quantity.plus (Length.meters 1)
 
@@ -934,13 +971,14 @@ motorbikeDeriveFrontWheelPosition motorbikeOrientation =
             )
 
 
-arcToLineSegments :
+arcToRightToLineSegments :
     { start : Point2d Length.Meters ()
     , end : Point2d Length.Meters ()
     , bendPercentage : Float
+    , drivingDirection : DrivingDirection
     }
     -> DrivingPathSegment
-arcToLineSegments arc =
+arcToRightToLineSegments arc =
     { start = arc.start
     , end = arc.end
     , bendPercentage = arc.bendPercentage
@@ -952,6 +990,7 @@ arcToLineSegments arc =
             }
             |> Arc2d.approximate (Length.meters 0.003)
             |> Polyline2d.segments
+    , drivingDirection = arc.drivingDirection
     }
 
 
@@ -1071,9 +1110,7 @@ stateToDocument state =
                         )
                     |> Svg.g
                         []
-                , drivingPath
-                    |> List.map drivingPathSegmentToSvg
-                    |> Svg.g []
+                , drivingPathSvg
                 , svgTranslated { x = 0, y = 0.84 }
                     [ svgScaled { x = 1, y = -1 }
                         [ Svg.text_
@@ -1091,6 +1128,105 @@ stateToDocument state =
                             , Svg.Attributes.fontWeight "bold"
                             ]
                             [ Svg.text "accelerate forwards/backwards" ]
+                        ]
+                    ]
+                , svgTranslated { x = 31, y = 0.5 }
+                    [ svgScaled { x = 1, y = -1 }
+                        [ Svg.text_
+                            [ Svg.Attributes.fontSize "0.2"
+                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                            , Svg.Attributes.fontWeight "bold"
+                            ]
+                            [ Svg.text "big jump!" ]
+                        ]
+                    ]
+                , svgTranslated { x = 31.8, y = -4 }
+                    [ svgRotated (Angle.turns -0.25)
+                        [ svgScaled { x = 1, y = -1 }
+                            [ Svg.text_
+                                [ Svg.Attributes.fontSize "0.2"
+                                , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                                , Svg.Attributes.fontWeight "bold"
+                                ]
+                                [ Svg.text "noooooooooooooooooooooooooooooooooooooooooooooooooooooooo!" ]
+                            ]
+                        ]
+                    ]
+                , svgTranslated { x = 40, y = 1 }
+                    [ svgScaled { x = 1, y = -1 }
+                        [ Svg.text_
+                            [ Svg.Attributes.fontSize "0.2"
+                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                            , Svg.Attributes.fontWeight "bold"
+                            ]
+                            [ Svg.text "take speed" ]
+                        ]
+                    ]
+                , svgTranslated { x = 88, y = 5.3 }
+                    [ svgScaled { x = 1, y = -1 }
+                        [ Svg.text_
+                            [ Svg.Attributes.fontSize "0.15"
+                            , Svg.Attributes.fill (Color.rgb 0.7 0.8 1 |> Color.toCssString)
+                            ]
+                            [ Svg.text "keep going" ]
+                        ]
+                    ]
+                , svgTranslated { x = 120, y = 15.2 }
+                    [ svgScaled { x = 1, y = -1 }
+                        [ Svg.text_
+                            [ Svg.Attributes.fontSize "0.2"
+                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                            , Svg.Attributes.fontWeight "bold"
+                            ]
+                            [ Svg.text "good job!" ]
+                        ]
+                    ]
+                , svgTranslated { x = 120, y = 16.2 }
+                    [ svgScaled { x = 1, y = -1 }
+                        [ Svg.text_
+                            [ Svg.Attributes.fontSize "0.2"
+                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                            , Svg.Attributes.fontWeight "bold"
+                            ]
+                            [ Svg.text "Have a nice day!" ]
+                        ]
+                    ]
+                , svgTranslated { x = 122, y = 8 }
+                    [ svgScaled { x = 1, y = -1 }
+                        [ Svg.text_
+                            [ Svg.Attributes.fontSize "0.2"
+                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                            , Svg.Attributes.fontWeight "bold"
+                            ]
+                            [ Svg.text """Ი︵𐑼""" ]
+                        ]
+                    ]
+                , svgTranslated { x = 122.1, y = 7.7 }
+                    [ svgScaled { x = 1, y = -1 }
+                        [ Svg.text_
+                            [ Svg.Attributes.fontSize "0.2"
+                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                            , Svg.Attributes.fontWeight "bold"
+                            ]
+                            [ Svg.text "•ᴗ•   ₊˚⊹ᰔ    ꫂ❁" ]
+                        ]
+                    ]
+                , svgTranslated { x = -8, y = -1 }
+                    [ svgScaled { x = 1, y = -1 }
+                        [ Svg.text_
+                            [ Svg.Attributes.fontSize "0.2"
+                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                            ]
+                            [ Svg.text "nothing here" ]
+                        ]
+                    ]
+                , svgTranslated { x = -8, y = -2 }
+                    [ svgScaled { x = 1, y = -1 }
+                        [ Svg.text_
+                            [ Svg.Attributes.fontSize "0.2"
+                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                            ]
+                            [ Svg.text "૮꒰˶ᵔ ᵕ ᵔ˶꒱ა" ]
                         ]
                     ]
                 ]
@@ -1111,6 +1247,13 @@ stateToDocument state =
             ]
         ]
     }
+
+
+drivingPathSvg : Svg Event
+drivingPathSvg =
+    drivingPath
+        |> List.map drivingPathSegmentToSvg
+        |> Svg.g []
 
 
 svgDefinitions : Svg event_
@@ -1350,7 +1493,7 @@ drivingPathSegmentToSvg drivingPathSegment =
                 |> drivingPathSegmentToArc2d
             )
             [ Svg.Attributes.strokeWidth (drivingPathStrokeWidth |> Quantity.multiplyBy 1 |> Length.inMeters |> String.fromFloat)
-            , Svg.Attributes.stroke (Color.rgb 0.15 0.25 0.1 |> Color.toCssString)
+            , Svg.Attributes.stroke (Color.rgb 0.1 0.15 0.2 |> Color.toCssString)
             , Svg.Attributes.fill "none"
             , Svg.Attributes.strokeLinecap "round"
 
@@ -1416,7 +1559,13 @@ type alias DrivingPathSegment =
     , bendPercentage : Float
     , approximation :
         List (LineSegment2d Length.Meters ())
+    , drivingDirection : DrivingDirection
     }
+
+
+type DrivingDirection
+    = Backwards
+    | Forwards
 
 
 drivingPath : List DrivingPathSegment
@@ -1424,38 +1573,199 @@ drivingPath =
     [ { start = Point2d.meters -1 0.3
       , end = Point2d.meters 1 -0.2
       , bendPercentage = 0.3
+      , drivingDirection = Forwards
       }
-        |> arcToLineSegments
+        |> arcToRightToLineSegments
     , { start = Point2d.meters 1.2 -0.3
       , end = Point2d.meters 2 -2
       , bendPercentage = 0.2
+      , drivingDirection = Forwards
       }
-        |> arcToLineSegments
+        |> arcToRightToLineSegments
     , { start = Point2d.meters 2 -3
       , end = Point2d.meters 4.8 -3
-      , bendPercentage = 0.9
+      , bendPercentage = 0.78
+      , drivingDirection = Forwards
       }
-        |> arcToLineSegments
-    , { start = Point2d.meters 5 -3
-      , end = Point2d.meters 6.8 -3.4
-      , bendPercentage = 0.1
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 5 -5
+      , end = Point2d.meters 6.8 -5.4
+      , bendPercentage = -0.1
+      , drivingDirection = Forwards
       }
-        |> arcToLineSegments
+        |> arcToRightToLineSegments
     , { start = Point2d.meters 5 -2.5
       , end = Point2d.meters 6.8 -2.9
       , bendPercentage = 0.1
+      , drivingDirection = Forwards
       }
-        |> arcToLineSegments
+        |> arcToRightToLineSegments
     , { start = Point2d.meters 7 -3.4
-      , end = Point2d.meters 10 0
-      , bendPercentage = 0.4
+      , end = Point2d.meters 10 -0.8
+      , bendPercentage = 0.3
+      , drivingDirection = Forwards
       }
-        |> arcToLineSegments
-    , { start = Point2d.meters 10 0
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 10.5 -1
       , end = Point2d.meters 13 -3.4
       , bendPercentage = 0.4
+      , drivingDirection = Forwards
       }
-        |> arcToLineSegments
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 13 -3.4
+      , end = Point2d.meters 16 -1
+      , bendPercentage = 0.44
+      , drivingDirection = Forwards
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 16.5 -1
+      , end = Point2d.meters 18 -3.4
+      , bendPercentage = -0.3
+      , drivingDirection = Forwards
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 18 -3.4
+      , end = Point2d.meters 21 -1.5
+      , bendPercentage = 0.4
+      , drivingDirection = Forwards
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 21.3 -1.5
+      , end = Point2d.meters 25 -1
+      , bendPercentage = -0.61
+      , drivingDirection = Forwards
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 25 -1
+      , end = Point2d.meters 30 -1
+      , bendPercentage = 0.61
+      , drivingDirection = Forwards
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 33.55 -0.75
+      , end = Point2d.meters 40 -1
+      , bendPercentage = 0.8
+      , drivingDirection = Forwards
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 40.5 -1.1
+      , end = Point2d.meters 41.2 0.4
+      , bendPercentage = 0.1
+      , drivingDirection = Forwards
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 40.5 -1.1
+      , end = Point2d.meters 48 3.4
+      , bendPercentage = 0.3
+      , drivingDirection = Forwards
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 52 2
+      , end = Point2d.meters 61 2
+      , bendPercentage = 0.5
+      , drivingDirection = Forwards
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 64 3
+      , end = Point2d.meters 61 3
+      , bendPercentage = 0.5
+      , drivingDirection = Backwards
+
+      -- really?
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 63 1
+      , end = Point2d.meters 68 1
+      , bendPercentage = 0.5
+      , drivingDirection = Forwards
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 71 2
+      , end = Point2d.meters 67 2
+      , bendPercentage = 0.5
+      , drivingDirection = Backwards
+
+      -- really?
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 71 1
+      , end = Point2d.meters 80 1
+      , bendPercentage = 0.8
+      , drivingDirection = Forwards
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 81.42 2.9
+      , end = Point2d.meters 81.4 4.5
+      , drivingDirection = Forwards
+      , bendPercentage = 0.5
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 75.6 5
+      , end = Point2d.meters 78.401 1.5
+      , bendPercentage = 0.8
+      , drivingDirection = Forwards
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 82.8 0
+      , end = Point2d.meters 88.8 2
+      , drivingDirection = Forwards
+      , bendPercentage = 0.4
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 90 3
+      , end = Point2d.meters 85 4.8
+      , drivingDirection = Forwards
+      , bendPercentage = 0.9
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 82 4.2
+      , end = Point2d.meters 85.8 3
+      , drivingDirection = Backwards
+      , bendPercentage = 0.33
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 84 7
+      , end = Point2d.meters 84.01 3
+      , drivingDirection = Backwards
+      , bendPercentage = 0.99
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 84 6.2
+      , end = Point2d.meters 90 6.2
+      , drivingDirection = Forwards
+      , bendPercentage = -0.1
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 90 6.2
+      , end = Point2d.meters 95 8
+      , drivingDirection = Forwards
+      , bendPercentage = 0.17
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 95 8
+      , end = Point2d.meters 98 10
+      , drivingDirection = Forwards
+      , bendPercentage = 0.05
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 98 10
+      , end = Point2d.meters 100 12
+      , drivingDirection = Forwards
+      , bendPercentage = 0.03
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 100 12
+      , end = Point2d.meters 101 14
+      , drivingDirection = Forwards
+      , bendPercentage = 0.02
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 101.2 14
+      , end = Point2d.meters 120 14
+      , drivingDirection = Forwards
+      , bendPercentage = 0.99
+      }
+        |> arcToRightToLineSegments
     ]
 
 
