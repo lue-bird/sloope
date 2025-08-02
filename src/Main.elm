@@ -310,7 +310,7 @@ reactToEvent event state =
                                         state.motorbikeRotationalSpeed
                                             |> Quantity.multiplyBy 0.99
                                             |> quantityClampAbsToAtMost
-                                                (Length.meters 0.55
+                                                (Length.meters 0.6
                                                     |> Quantity.per Duration.second
                                                 )
 
@@ -403,11 +403,11 @@ simulateCollisionWithPeek config state =
                             , angle = config.peekStateIfNoCollision.motorbikeAngle
                             }
                     , wheelRotateDirection =
-                        state.motorbikeAngle
+                        config.peekStateIfNoCollision.motorbikeAngle
                             |> Direction2d.fromAngle
                             |> Direction2d.rotateClockwise
-                    , motorbikeVelocity = state.motorbikeVelocity
-                    , motorbikeRotationalSpeed = state.motorbikeRotationalSpeed
+                    , motorbikeVelocity = config.peekStateIfNoCollision.motorbikeVelocity
+                    , motorbikeRotationalSpeed = config.peekStateIfNoCollision.motorbikeRotationalSpeed
                     }
 
             frontWheelForce : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
@@ -419,11 +419,11 @@ simulateCollisionWithPeek config state =
                             , angle = config.peekStateIfNoCollision.motorbikeAngle
                             }
                     , wheelRotateDirection =
-                        state.motorbikeAngle
+                        config.peekStateIfNoCollision.motorbikeAngle
                             |> Direction2d.fromAngle
                             |> Direction2d.rotateCounterclockwise
-                    , motorbikeVelocity = state.motorbikeVelocity
-                    , motorbikeRotationalSpeed = state.motorbikeRotationalSpeed
+                    , motorbikeVelocity = config.peekStateIfNoCollision.motorbikeVelocity
+                    , motorbikeRotationalSpeed = config.peekStateIfNoCollision.motorbikeRotationalSpeed
                     }
 
             combinedNonRotationalForceToApply : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
@@ -471,26 +471,12 @@ simulateCollisionWithPeek config state =
                 state.motorbikeRotationalSpeed
                     |> Quantity.plus
                         combinedRotationalForceToApply
-                    |> Quantity.multiplyBy 0.995
+                    |> Quantity.multiplyBy 0.99
                     |> quantityClampAbsToAtMost
-                        (Length.meters 0.8
+                        (Length.meters 0.6
                             |> Quantity.per Duration.second
                         )
-
-            newMotorbikeRotationToApply : Angle
-            newMotorbikeRotationToApply =
-                Angle.turns
-                    ((newMotorbikeRotationalSpeed
-                        |> Quantity.for config.durationSinceLastTick
-                        |> Length.inMeters
-                     )
-                        / ((playerLengthBackToFrontAxis |> Length.inMeters)
-                            * pi
-                          )
-                    )
         in
-        -- TODO if lands in colliding orientation,
-        -- recurse
         simulateCollisionWithPeek
             { remainingAttemptsToResolve =
                 (config.remainingAttemptsToResolve |> Basics.abs) - 1
@@ -503,7 +489,17 @@ simulateCollisionWithPeek config state =
                         combinedNonRotationalForceToApply
                     , motorbikeAngle =
                         state.motorbikeAngle
-                            |> Quantity.plus newMotorbikeRotationToApply
+                            |> Quantity.plus
+                                (Angle.turns
+                                    ((newMotorbikeRotationalSpeed
+                                        |> Quantity.for config.durationSinceLastTick
+                                        |> Length.inMeters
+                                     )
+                                        / ((playerLengthBackToFrontAxis |> Length.inMeters)
+                                            * pi
+                                          )
+                                    )
+                                )
                             |> Angle.normalize
                     , motorbikeCenter =
                         state.motorbikeCenter
