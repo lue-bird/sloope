@@ -235,39 +235,39 @@ reactToEvent event state =
                                 Duration.from lastSimulationTime
                                     currentTime
 
-                            newMotorbikeWheelAngle : Quantity Float Angle.Radians
-                            newMotorbikeWheelAngle =
-                                state.motorbikeWheelAngle
-                                    |> Quantity.minus
-                                        (Angle.turns
-                                            (((state.playerInputSpeed
-                                                |> Quantity.for Duration.second
-                                                |> Length.inMeters
-                                                |> abs
-                                              )
-                                                / ((playerLengthBackToFrontAxis |> Length.inMeters)
-                                                    * pi
-                                                  )
-                                             )
-                                                ^ -- keep spinning even when input is faint
-                                                  0.12
-                                                * (state.playerInputSpeed
-                                                    |> Quantity.for Duration.second
-                                                    |> Quantity.sign
-                                                  )
-                                            )
-                                            |> quantityClampAbsToAtLeast
-                                                (Angle.turns 0.004)
-                                        )
-
-                            newPlayerInputSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
-                            newPlayerInputSpeed =
-                                state.playerInputSpeed
-                                    |> Quantity.multiplyBy 0.89
-
                             peekStateIfNoCollision : State
                             peekStateIfNoCollision =
                                 let
+                                    newMotorbikeWheelAngle : Quantity Float Angle.Radians
+                                    newMotorbikeWheelAngle =
+                                        state.motorbikeWheelAngle
+                                            |> Quantity.minus
+                                                (Angle.turns
+                                                    (((state.playerInputSpeed
+                                                        |> Quantity.for Duration.second
+                                                        |> Length.inMeters
+                                                        |> abs
+                                                      )
+                                                        / ((playerLengthBackToFrontAxis |> Length.inMeters)
+                                                            * pi
+                                                          )
+                                                     )
+                                                        ^ -- keep spinning even when input is faint
+                                                          0.12
+                                                        * (state.playerInputSpeed
+                                                            |> Quantity.for Duration.second
+                                                            |> Quantity.sign
+                                                          )
+                                                    )
+                                                    |> quantityClampAbsToAtLeast
+                                                        (Angle.turns 0.004)
+                                                )
+
+                                    newPlayerInputSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
+                                    newPlayerInputSpeed =
+                                        state.playerInputSpeed
+                                            |> Quantity.multiplyBy 0.89
+
                                     directionToRightFacingWheel : Direction2d ()
                                     directionToRightFacingWheel =
                                         if
@@ -344,135 +344,178 @@ reactToEvent event state =
                                     , motorbikeWheelAngle = newMotorbikeWheelAngle
                                 }
                         in
-                        ( if
-                            Basics.not
-                                (motorcycleWouldCollide
-                                    { center = peekStateIfNoCollision.motorbikeCenter
-                                    , angle = peekStateIfNoCollision.motorbikeAngle
-                                    }
-                                )
-                          then
-                            peekStateIfNoCollision
-
-                          else
-                            let
-                                backWheelForce : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
-                                backWheelForce =
-                                    wheelCombinedCollisionForce
-                                        { wheelPosition =
-                                            motorbikeDeriveBackWheelPosition
-                                                { center = peekStateIfNoCollision.motorbikeCenter
-                                                , angle = peekStateIfNoCollision.motorbikeAngle
-                                                }
-                                        , wheelRotateDirection =
-                                            state.motorbikeAngle
-                                                |> Direction2d.fromAngle
-                                                |> Direction2d.rotateClockwise
-                                        , motorbikeVelocity = state.motorbikeVelocity
-                                        , motorbikeRotationalSpeed = state.motorbikeRotationalSpeed
-                                        }
-
-                                frontWheelForce : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
-                                frontWheelForce =
-                                    wheelCombinedCollisionForce
-                                        { wheelPosition =
-                                            motorbikeDeriveFrontWheelPosition
-                                                { center = peekStateIfNoCollision.motorbikeCenter
-                                                , angle = peekStateIfNoCollision.motorbikeAngle
-                                                }
-                                        , wheelRotateDirection =
-                                            state.motorbikeAngle
-                                                |> Direction2d.fromAngle
-                                                |> Direction2d.rotateCounterclockwise
-                                        , motorbikeVelocity = state.motorbikeVelocity
-                                        , motorbikeRotationalSpeed = state.motorbikeRotationalSpeed
-                                        }
-
-                                combinedNonRotationalForceToApply : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
-                                combinedNonRotationalForceToApply =
-                                    backWheelForce
-                                        |> Vector2d.plus frontWheelForce
-                                        |> -- reducing this helps keep
-                                           -- the motorbike grounded
-                                           -- but currently also leads to ground clipping
-                                           -- because rotation velocity sometimes keeps going
-                                           Vector2d.scaleBy 1
-                                        |> vector2dClampToMaxLength
-                                            (Length.meters 3
-                                                |> Quantity.per Duration.second
-                                            )
-
-                                combinedRotationalForceToApply : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
-                                combinedRotationalForceToApply =
-                                    Vector2d.cross
-                                        (Vector2d.from
-                                            (motorbikeDeriveBackWheelPosition
-                                                { center = state.motorbikeCenter
-                                                , angle = state.motorbikeAngle
-                                                }
-                                            )
-                                            state.motorbikeCenter
-                                        )
-                                        backWheelForce
-                                        |> Quantity.plus
-                                            (Vector2d.cross
-                                                (Vector2d.from
-                                                    (motorbikeDeriveFrontWheelPosition
-                                                        { center = state.motorbikeCenter
-                                                        , angle = state.motorbikeAngle
-                                                        }
-                                                    )
-                                                    state.motorbikeCenter
-                                                )
-                                                frontWheelForce
-                                            )
-                                        |> Quantity.over_ Length.meter
-
-                                newMotorbikeRotationalSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
-                                newMotorbikeRotationalSpeed =
-                                    state.motorbikeRotationalSpeed
-                                        |> Quantity.plus
-                                            combinedRotationalForceToApply
-                                        |> Quantity.multiplyBy 0.995
-                                        |> quantityClampAbsToAtMost
-                                            (Length.meters 0.8
-                                                |> Quantity.per Duration.second
-                                            )
-
-                                newMotorbikeRotationToApply : Angle
-                                newMotorbikeRotationToApply =
-                                    Angle.turns
-                                        ((newMotorbikeRotationalSpeed
-                                            |> Quantity.for durationSinceLastTick
-                                            |> Length.inMeters
-                                         )
-                                            / ((playerLengthBackToFrontAxis |> Length.inMeters)
-                                                * pi
-                                              )
-                                        )
-                            in
-                            -- TODO if lands in colliding orientation,
-                            -- recurse
-                            { state
-                                | lastSimulationTime = Just currentTime
-                                , motorbikeRotationalSpeed = newMotorbikeRotationalSpeed
-                                , motorbikeVelocity =
-                                    combinedNonRotationalForceToApply
-                                , motorbikeAngle =
-                                    state.motorbikeAngle
-                                        |> Quantity.plus newMotorbikeRotationToApply
-                                        |> Angle.normalize
-                                , motorbikeCenter =
-                                    state.motorbikeCenter
-                                        |> Point2d.translateBy
-                                            (combinedNonRotationalForceToApply
-                                                |> Vector2d.for durationSinceLastTick
-                                            )
-                                , playerInputSpeed = newPlayerInputSpeed
-                                , motorbikeWheelAngle = newMotorbikeWheelAngle
+                        ( simulateCollisionWithPeek
+                            { remainingAttemptsToResolve = 10
+                            , peekStateIfNoCollision = peekStateIfNoCollision
+                            , durationSinceLastTick = durationSinceLastTick
                             }
+                            state
                         , Cmd.none
                         )
+
+
+simulateCollisionWithPeek :
+    { remainingAttemptsToResolve : Int
+    , durationSinceLastTick : Duration
+    , peekStateIfNoCollision : State
+    }
+    -> State
+    -> State
+simulateCollisionWithPeek config state =
+    if config.remainingAttemptsToResolve <= 0 then
+        let
+            _ =
+                Debug.log "failed to resolve collision, clipping intentionally" ()
+        in
+        -- clip, which will look like a bug to the user
+        -- illegal state but what else is there to do.
+        -- I think reaching this state (which is actually reached sometimes currently)
+        -- means that arc edge colliders are mis-oriented / don't trigger correctly
+        config.peekStateIfNoCollision
+
+    else if
+        Basics.not
+            (motorcycleWouldCollide
+                { center = config.peekStateIfNoCollision.motorbikeCenter
+                , angle = config.peekStateIfNoCollision.motorbikeAngle
+                }
+            )
+    then
+        let
+            _ =
+                if config.remainingAttemptsToResolve <= 9 then
+                    Debug.log "succeeded collision with remainingAttemptsToResolve"
+                        config.remainingAttemptsToResolve
+
+                else
+                    config.remainingAttemptsToResolve
+        in
+        config.peekStateIfNoCollision
+
+    else
+        let
+            backWheelForce : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
+            backWheelForce =
+                wheelCombinedCollisionForce
+                    { wheelPosition =
+                        motorbikeDeriveBackWheelPosition
+                            { center = config.peekStateIfNoCollision.motorbikeCenter
+                            , angle = config.peekStateIfNoCollision.motorbikeAngle
+                            }
+                    , wheelRotateDirection =
+                        state.motorbikeAngle
+                            |> Direction2d.fromAngle
+                            |> Direction2d.rotateClockwise
+                    , motorbikeVelocity = state.motorbikeVelocity
+                    , motorbikeRotationalSpeed = state.motorbikeRotationalSpeed
+                    }
+
+            frontWheelForce : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
+            frontWheelForce =
+                wheelCombinedCollisionForce
+                    { wheelPosition =
+                        motorbikeDeriveFrontWheelPosition
+                            { center = config.peekStateIfNoCollision.motorbikeCenter
+                            , angle = config.peekStateIfNoCollision.motorbikeAngle
+                            }
+                    , wheelRotateDirection =
+                        state.motorbikeAngle
+                            |> Direction2d.fromAngle
+                            |> Direction2d.rotateCounterclockwise
+                    , motorbikeVelocity = state.motorbikeVelocity
+                    , motorbikeRotationalSpeed = state.motorbikeRotationalSpeed
+                    }
+
+            combinedNonRotationalForceToApply : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
+            combinedNonRotationalForceToApply =
+                backWheelForce
+                    |> Vector2d.plus frontWheelForce
+                    |> -- reducing this helps keep
+                       -- the motorbike grounded
+                       -- but currently also leads to ground clipping
+                       -- because rotation velocity sometimes keeps going
+                       Vector2d.scaleBy 1
+                    |> vector2dClampToMaxLength
+                        (Length.meters 3
+                            |> Quantity.per Duration.second
+                        )
+
+            combinedRotationalForceToApply : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
+            combinedRotationalForceToApply =
+                Vector2d.cross
+                    (Vector2d.from
+                        (motorbikeDeriveBackWheelPosition
+                            { center = state.motorbikeCenter
+                            , angle = state.motorbikeAngle
+                            }
+                        )
+                        state.motorbikeCenter
+                    )
+                    backWheelForce
+                    |> Quantity.plus
+                        (Vector2d.cross
+                            (Vector2d.from
+                                (motorbikeDeriveFrontWheelPosition
+                                    { center = state.motorbikeCenter
+                                    , angle = state.motorbikeAngle
+                                    }
+                                )
+                                state.motorbikeCenter
+                            )
+                            frontWheelForce
+                        )
+                    |> Quantity.over_ Length.meter
+
+            newMotorbikeRotationalSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
+            newMotorbikeRotationalSpeed =
+                state.motorbikeRotationalSpeed
+                    |> Quantity.plus
+                        combinedRotationalForceToApply
+                    |> Quantity.multiplyBy 0.995
+                    |> quantityClampAbsToAtMost
+                        (Length.meters 0.8
+                            |> Quantity.per Duration.second
+                        )
+
+            newMotorbikeRotationToApply : Angle
+            newMotorbikeRotationToApply =
+                Angle.turns
+                    ((newMotorbikeRotationalSpeed
+                        |> Quantity.for config.durationSinceLastTick
+                        |> Length.inMeters
+                     )
+                        / ((playerLengthBackToFrontAxis |> Length.inMeters)
+                            * pi
+                          )
+                    )
+        in
+        -- TODO if lands in colliding orientation,
+        -- recurse
+        simulateCollisionWithPeek
+            { remainingAttemptsToResolve =
+                (config.remainingAttemptsToResolve |> Basics.abs) - 1
+            , durationSinceLastTick = config.durationSinceLastTick
+            , peekStateIfNoCollision =
+                { state
+                    | lastSimulationTime = config.peekStateIfNoCollision.lastSimulationTime
+                    , motorbikeRotationalSpeed = newMotorbikeRotationalSpeed
+                    , motorbikeVelocity =
+                        combinedNonRotationalForceToApply
+                    , motorbikeAngle =
+                        state.motorbikeAngle
+                            |> Quantity.plus newMotorbikeRotationToApply
+                            |> Angle.normalize
+                    , motorbikeCenter =
+                        state.motorbikeCenter
+                            |> Point2d.translateBy
+                                (combinedNonRotationalForceToApply
+                                    |> Vector2d.for config.durationSinceLastTick
+                                )
+                    , playerInputSpeed = config.peekStateIfNoCollision.playerInputSpeed
+                    , motorbikeWheelAngle = config.peekStateIfNoCollision.motorbikeWheelAngle
+                }
+            }
+            state
 
 
 motorcycleWouldCollide :
@@ -1341,10 +1384,6 @@ drivingPath =
 vector2dClampToMaxLength : Quantity Float units -> Vector2d units () -> Vector2d units ()
 vector2dClampToMaxLength lengthMaximum vector2d =
     if vector2d |> Vector2d.length |> Quantity.greaterThan lengthMaximum then
-        let
-            _ =
-                Debug.log "clamp vec2" ()
-        in
         Vector2d.withLength lengthMaximum
             (vector2d
                 |> Vector2d.direction
