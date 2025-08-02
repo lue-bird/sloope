@@ -345,7 +345,7 @@ reactToEvent event state =
                                 }
                         in
                         ( simulateCollisionWithPeek
-                            { remainingAttemptsToResolve = 10
+                            { countOfAttemptsTryingToResolve = 0
                             , peekStateIfNoCollision = peekStateIfNoCollision
                             , durationSinceLastTick = durationSinceLastTick
                             }
@@ -355,14 +355,14 @@ reactToEvent event state =
 
 
 simulateCollisionWithPeek :
-    { remainingAttemptsToResolve : Int
+    { countOfAttemptsTryingToResolve : Int
     , durationSinceLastTick : Duration
     , peekStateIfNoCollision : State
     }
     -> State
     -> State
 simulateCollisionWithPeek config state =
-    if config.remainingAttemptsToResolve <= 0 then
+    if config.countOfAttemptsTryingToResolve >= 10 then
         let
             _ =
                 Debug.log "failed to resolve collision, clipping intentionally" ()
@@ -383,12 +383,12 @@ simulateCollisionWithPeek config state =
     then
         let
             _ =
-                if config.remainingAttemptsToResolve <= 9 then
-                    Debug.log "succeeded collision with remainingAttemptsToResolve"
-                        config.remainingAttemptsToResolve
+                if config.countOfAttemptsTryingToResolve >= 2 then
+                    Debug.log "resolved collision with countOfAttemptsTryingToResolve"
+                        config.countOfAttemptsTryingToResolve
 
                 else
-                    config.remainingAttemptsToResolve
+                    config.countOfAttemptsTryingToResolve
         in
         config.peekStateIfNoCollision
 
@@ -432,9 +432,14 @@ simulateCollisionWithPeek config state =
                     |> Vector2d.plus frontWheelForce
                     |> -- reducing this helps keep
                        -- the motorbike grounded
-                       -- but currently also leads to ground clipping
-                       -- because rotation velocity sometimes keeps going
-                       Vector2d.scaleBy 1
+                       -- TODO only scale down by how destructive the
+                       -- config.peekStateIfNoCollision.motorbikeVelocity is
+                       -- e.g. if both are in the same direction
+                       -- if they are opposite, do like 0.5.
+                       -- to do that, take peek velocity and for each component
+                       -- set to 0 if opposite to force direction
+                       -- then finally multiply both, each abs
+                       Vector2d.scaleBy 0.6
                     |> vector2dClampToMaxLength
                         (Length.meters 3
                             |> Quantity.per Duration.second
@@ -465,33 +470,26 @@ simulateCollisionWithPeek config state =
                             frontWheelForce
                         )
                     |> Quantity.over_ Length.meter
-
-            newMotorbikeRotationalSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
-            newMotorbikeRotationalSpeed =
-                state.motorbikeRotationalSpeed
-                    |> Quantity.plus
-                        combinedRotationalForceToApply
-                    |> Quantity.multiplyBy 0.99
                     |> quantityClampAbsToAtMost
                         (Length.meters 0.6
                             |> Quantity.per Duration.second
                         )
         in
         simulateCollisionWithPeek
-            { remainingAttemptsToResolve =
-                (config.remainingAttemptsToResolve |> Basics.abs) - 1
+            { countOfAttemptsTryingToResolve =
+                (config.countOfAttemptsTryingToResolve |> Basics.abs) + 1
             , durationSinceLastTick = config.durationSinceLastTick
             , peekStateIfNoCollision =
                 { state
                     | lastSimulationTime = config.peekStateIfNoCollision.lastSimulationTime
-                    , motorbikeRotationalSpeed = newMotorbikeRotationalSpeed
+                    , motorbikeRotationalSpeed = combinedRotationalForceToApply
                     , motorbikeVelocity =
                         combinedNonRotationalForceToApply
                     , motorbikeAngle =
                         state.motorbikeAngle
                             |> Quantity.plus
                                 (Angle.turns
-                                    ((newMotorbikeRotationalSpeed
+                                    ((combinedRotationalForceToApply
                                         |> Quantity.for config.durationSinceLastTick
                                         |> Length.inMeters
                                      )
@@ -508,7 +506,8 @@ simulateCollisionWithPeek config state =
                                     |> Vector2d.for config.durationSinceLastTick
                                 )
                     , playerInputSpeed = config.peekStateIfNoCollision.playerInputSpeed
-                    , motorbikeWheelAngle = config.peekStateIfNoCollision.motorbikeWheelAngle
+                    , motorbikeWheelAngle =
+                        config.peekStateIfNoCollision.motorbikeWheelAngle
                 }
             }
             state
