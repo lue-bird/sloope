@@ -7,6 +7,7 @@
     <style>
       body {
             margin: 0;
+            overflow: hidden;
         }
     </style>
     <script src="./build/main.js"></script>
@@ -20,11 +21,22 @@
       });
       app.ports.playAudio.subscribe(function(audioToPlay) {
         // TODO cache?
-        var audio = new Audio("public/" + audioToPlay.name + ".mp3");
-        audio.playbackRate = audioToPlay.playbackRate;
-        audio.volume = audioToPlay.volume;
-        audio.play();
+        try {
+            var audio = new Audio("public/" + audioToPlay.name + ".mp3");
+            audio.playbackRate = audioToPlay.playbackRate;
+            audio.volume = audioToPlay.volume;
+            audio.play();
+        } catch {
+        }
       });
+
+      document.addEventListener("wheel", preventScroll, {passive: false});
+
+      function preventScroll(e){
+          e.preventDefault();
+          e.stopPropagation();
+          return false;
+      }
     </script>
   </body>
 </html>
