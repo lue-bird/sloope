@@ -951,7 +951,8 @@ stateToDocument state =
                     ++ (state.windowSize.height |> String.fromFloat)
                 )
             ]
-            [ Svg.rect
+            [ -- svgDefinitions
+              Svg.rect
                 [ Svg.Attributes.width (state.windowSize.width |> px)
                 , Svg.Attributes.height (state.windowSize.height |> px)
                 , Svg.Attributes.fill (Color.rgb 0.2 0 0.08 |> Color.toCssString)
@@ -1081,6 +1082,27 @@ stateToDocument state =
             ]
         ]
     }
+
+
+svgDefinitions : Svg event_
+svgDefinitions =
+    Svg.defs
+        []
+        [ Svg.filter [ Svg.Attributes.id "glow" ]
+            [ Svg.feGaussianBlur
+                [ Svg.Attributes.stdDeviation "5"
+                , Svg.Attributes.result "coloredBlur"
+                ]
+                []
+            , Svg.feMerge
+                []
+                [ Svg.feMergeNode [ Svg.Attributes.in_ "coloredBlur" ] []
+                , Svg.feMergeNode
+                    [ Svg.Attributes.in_ "SourceGraphic" ]
+                    []
+                ]
+            ]
+        ]
 
 
 motorbikeToSvg :
@@ -1298,14 +1320,16 @@ drivingPathSegmentToSvg drivingPathSegment =
             |> drivingPathSegmentToArc2d
         )
         [ Svg.Attributes.strokeWidth (drivingPathStrokeWidth |> Length.inMeters |> String.fromFloat)
-        , Svg.Attributes.stroke (Color.rgb 0.75 0.95 1 |> Color.toCssString)
-        , Svg.Attributes.fill (Color.rgba 0 0 0 0 |> Color.toCssString)
+        , Svg.Attributes.stroke (Color.rgba 0.75 0.95 1 1 |> Color.toCssString)
+        , Svg.Attributes.fill "none"
+
+        -- , Svg.Attributes.filter "url(#glow)"
         ]
 
 
 drivingPathStrokeWidth : Length
 drivingPathStrokeWidth =
-    Length.meters 0.12
+    Length.meters 0.09
 
 
 svgLineSegment :
