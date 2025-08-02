@@ -308,15 +308,14 @@ reactToEvent event state =
                                     newMotorbikeRotationalSpeed =
                                         -- TODO prefer straightened out to current velocity direction
                                         state.motorbikeRotationalSpeed
-                                            |> Quantity.multiplyBy 0.995
+                                            |> Quantity.multiplyBy 0.99
                                             |> quantityClampAbsToAtMost
-                                                (Length.meters 0.8
+                                                (Length.meters 0.55
                                                     |> Quantity.per Duration.second
                                                 )
 
                                     newMotorbikeRotationToApply : Angle
                                     newMotorbikeRotationToApply =
-                                        -- TODO adapt
                                         Angle.turns
                                             ((newMotorbikeRotationalSpeed
                                                 |> Quantity.for durationSinceLastTick
@@ -869,7 +868,7 @@ arcToLineSegments arc =
             , end = arc.end
             , bendPercentage = arc.bendPercentage
             }
-            |> Arc2d.approximate (Length.meters 0.03)
+            |> Arc2d.approximate (Length.meters 0.02)
             |> Polyline2d.segments
     }
 
