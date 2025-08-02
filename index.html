@@ -16,8 +16,15 @@
     </main>
     <script>
       var app = Elm.Main.init({
-            node: document.getElementById("app")
-        });
+          node: document.getElementById("app")
+      });
+      app.ports.playAudio.subscribe(function(audioToPlay) {
+        // TODO cache?
+        var audio = new Audio("public/" + audioToPlay.name + ".mp3");
+        audio.playbackRate = audioToPlay.playbackRate;
+        audio.volume = audioToPlay.volume;
+        audio.play();
+      });
     </script>
   </body>
 </html>

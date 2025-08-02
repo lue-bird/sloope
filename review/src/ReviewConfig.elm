@@ -150,7 +150,6 @@ config =
     , NoDeprecated.rule NoDeprecated.defaults
     , NoPrematureLetComputation.rule
     , NoDuplicatePorts.rule
-    , NoUnsafePorts.rule NoUnsafePorts.any
     , NoRecursiveUpdate.rule
     , NoSimpleLetBody.rule
     , NoUnnecessaryTrailingUnderscore.rule

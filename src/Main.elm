@@ -1,4 +1,4 @@
-module Main exposing (main)
+port module Main exposing (main)
 
 -- I use a bunch of physics terms
 -- incorrectly, it's easier for my brain that way but I'm sorry!
@@ -16,6 +16,7 @@ import Json.Decode
 import Length exposing (Length)
 import LineSegment2d exposing (LineSegment2d)
 import Parameter1d
+import Platform.Cmd as Cmd
 import Point2d exposing (Point2d)
 import Polyline2d
 import Quantity exposing (Quantity)
@@ -28,11 +29,22 @@ import Time
 import Vector2d exposing (Vector2d)
 
 
+port playAudio :
+    { name : String
+    , volume : Float
+    , playbackRate : Float
+    }
+    -> Cmd event_
+
+
 type alias State =
     { windowSize : { height : Float, width : Float }
     , lastSimulationTime : Maybe Time.Posix
     , startTime : Maybe Time.Posix
-    , playerInputSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
+    , playerInputSpeed :
+        -- the unit of this is super fake
+        -- but I don't really know what it is exactly
+        Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
     , motorbikeCenter : Point2d Length.Meters ()
     , motorbikeAngle : Angle
     , motorbikeVelocity : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
@@ -181,7 +193,7 @@ reactToEvent event state =
                     state.playerInputSpeed
                         |> Quantity.plus
                             (Length.meters
-                                (0.25
+                                (0.42
                                     * (case gameplayKey of
                                         GameplayKeyArrowLeft ->
                                             -1
@@ -193,11 +205,35 @@ reactToEvent event state =
                                 |> Quantity.per Duration.second
                             )
                         |> quantityClampAbsToAtMost
-                            (Length.meters 0.28
+                            (Length.meters 0.42
                                 |> Quantity.per Duration.second
                             )
               }
-            , Cmd.none
+            , if
+                state.playerInputSpeed
+                    |> Quantity.abs
+                    |> Quantity.lessThan
+                        (Length.meters 0.13
+                            |> Quantity.per Duration.second
+                        )
+              then
+                case gameplayKey of
+                    GameplayKeyArrowLeft ->
+                        playAudio
+                            { name = "tough-motorbike-decelerate"
+                            , playbackRate = 1.35
+                            , volume = 0.051
+                            }
+
+                    GameplayKeyArrowRight ->
+                        playAudio
+                            { name = "motorbike-accelerate"
+                            , playbackRate = 1
+                            , volume = 0.465
+                            }
+
+              else
+                Cmd.none
             )
 
         SimulationTick currentTime ->
@@ -300,7 +336,7 @@ reactToEvent event state =
                                                 )
                                             |> Vector2d.scaleBy 0.996
                                             |> vector2dClampToMaxLength
-                                                (Length.meters 3
+                                                (Length.meters 5.2
                                                     |> Quantity.per Duration.second
                                                 )
 
@@ -310,7 +346,7 @@ reactToEvent event state =
                                         state.motorbikeRotationalSpeed
                                             |> Quantity.multiplyBy 0.99
                                             |> quantityClampAbsToAtMost
-                                                (Length.meters 0.6
+                                                (Length.meters 0.9
                                                     |> Quantity.per Duration.second
                                                 )
 
@@ -362,10 +398,10 @@ simulateCollisionWithPeek :
     -> State
     -> State
 simulateCollisionWithPeek config state =
-    if config.countOfAttemptsTryingToResolve >= 10 then
+    if config.countOfAttemptsTryingToResolve >= 25 then
         let
             _ =
-                Debug.log "failed to resolve collision, clipping intentionally" ()
+                Debug.log "failed to resolve collision, potentially clipping" ()
         in
         -- clip, which will look like a bug to the user
         -- illegal state but what else is there to do.
@@ -381,15 +417,15 @@ simulateCollisionWithPeek config state =
                 }
             )
     then
-        let
-            _ =
-                if config.countOfAttemptsTryingToResolve >= 2 then
-                    Debug.log "resolved collision with countOfAttemptsTryingToResolve"
-                        config.countOfAttemptsTryingToResolve
-
-                else
-                    config.countOfAttemptsTryingToResolve
-        in
+        -- let
+        --     _ =
+        --         if config.countOfAttemptsTryingToResolve >= 2 then
+        --             Debug.log "resolved collision with countOfAttemptsTryingToResolve"
+        --                 config.countOfAttemptsTryingToResolve
+        --
+        --         else
+        --             config.countOfAttemptsTryingToResolve
+        -- in
         config.peekStateIfNoCollision
 
     else
@@ -426,10 +462,13 @@ simulateCollisionWithPeek config state =
                     , motorbikeRotationalSpeed = config.peekStateIfNoCollision.motorbikeRotationalSpeed
                     }
 
-            combinedNonRotationalForceToApply : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
-            combinedNonRotationalForceToApply =
+            combinedNonRotationalWheelForce =
                 backWheelForce
                     |> Vector2d.plus frontWheelForce
+
+            combinedNonRotationalForceToApply : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
+            combinedNonRotationalForceToApply =
+                combinedNonRotationalWheelForce
                     |> -- reducing this helps keep
                        -- the motorbike grounded
                        -- TODO only scale down by how destructive the
@@ -439,9 +478,22 @@ simulateCollisionWithPeek config state =
                        -- to do that, take peek velocity and for each component
                        -- set to 0 if opposite to force direction
                        -- then finally multiply both, each abs
-                       Vector2d.scaleBy 0.6
+                       Vector2d.scaleBy
+                        (0.075
+                            + 1.0001
+                            * (Maybe.map2 direction2dSimilarity
+                                (combinedNonRotationalWheelForce |> Vector2d.direction)
+                                (config.peekStateIfNoCollision.motorbikeVelocity
+                                    |> Vector2d.direction
+                                )
+                                |> Maybe.withDefault 0
+                                |> -- should be in that range anyway but better be safe
+                                   Basics.clamp 0 1
+                              )
+                            ^ 1.12
+                        )
                     |> vector2dClampToMaxLength
-                        (Length.meters 3
+                        (Length.meters 5.2
                             |> Quantity.per Duration.second
                         )
 
@@ -471,7 +523,7 @@ simulateCollisionWithPeek config state =
                         )
                     |> Quantity.over_ Length.meter
                     |> quantityClampAbsToAtMost
-                        (Length.meters 0.6
+                        (Length.meters 0.9
                             |> Quantity.per Duration.second
                         )
         in
@@ -511,6 +563,16 @@ simulateCollisionWithPeek config state =
                 }
             }
             state
+
+
+direction2dSimilarity : Direction2d () -> Direction2d () -> Float
+direction2dSimilarity a b =
+    (a |> Direction2d.toVector)
+        |> Vector2d.plus
+            (b |> Direction2d.toVector)
+        |> Vector2d.half
+        |> Vector2d.length
+        |> Quantity.unwrap
 
 
 motorcycleWouldCollide :
@@ -809,7 +871,7 @@ lineSegment2dCollidesWithCircle circle lineSegment =
 
 gravity : Vector2d (Quantity.Rate (Quantity.Rate Length.Meters Duration.Seconds) Duration.Seconds) ()
 gravity =
-    Vector2d.meters 0 -2
+    Vector2d.meters 0 -4
         |> Vector2d.per Duration.second
         |> Vector2d.per Duration.second
 
@@ -906,7 +968,7 @@ arcToLineSegments arc =
             , end = arc.end
             , bendPercentage = arc.bendPercentage
             }
-            |> Arc2d.approximate (Length.meters 0.02)
+            |> Arc2d.approximate (Length.meters 0.003)
             |> Polyline2d.segments
     }
 

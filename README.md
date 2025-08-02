@@ -20,7 +20,6 @@ and open the shown http link.
 - actual level
 - menu as in a start button
 - music
-- sound effect, pitch/intensity directly mapped from wheel movement
 
 ### only if time
 - add props
