@@ -13,19 +13,18 @@ npx elm-watch hot
 and open the shown http link.
 
 ## TODO
-- introduce/mainly use path segments that instead of colliding "snap" on intersection
-  → then only/mainly take player input as how much to accelerate while snapped
-  To figure out: interaction with only one wheel snapped = ?
-  To figure out: when exactly to "unsnap"?
+- only/mainly take player input when last collision (ground contact) time
+  was recent
 - add itch page (ugh)
-- add camera effects
-- add props
+- never let the camera move below or above dead zones
 - actual level
 - menu as in a start button
 - music
 - sound effect, pitch/intensity directly mapped from wheel movement
 
-too to probably matter
+### only if time
+- add props
+- add camera effects like zoom depending on speed or slight angling
 - wheels on both sides of a line should be prevented by adding collision to the connection from back to front wheel
 - angle of arcs is based on connection between start and end, not actual angle
 - apply effects like gradients to shadows or glow to platforms
