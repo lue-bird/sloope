@@ -50,6 +50,7 @@ type alias State =
     , motorbikeVelocity : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
     , motorbikeRotationalSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
     , motorbikeWheelAngle : Angle
+    , lastPathContactTime : Maybe Time.Posix
     }
 
 
@@ -105,6 +106,7 @@ initialState =
         Length.meters 0.02
             |> Quantity.per Duration.second
     , motorbikeWheelAngle = Angle.turns 0.123
+    , lastPathContactTime = Nothing
     }
 
 
@@ -145,33 +147,6 @@ gameplayKeyJsonDecoder =
                     Json.Decode.fail "unknown key, ignore"
         )
         (Json.Decode.field "key" Json.Decode.string)
-
-
-quantityClampAbsToAtMost :
-    Quantity Float units
-    -> Quantity Float units
-    -> Quantity Float units
-quantityClampAbsToAtMost maxAbsValue quantity =
-    quantity
-        |> Quantity.clamp
-            (maxAbsValue |> Quantity.negate)
-            maxAbsValue
-
-
-quantityClampAbsToAtLeast :
-    Quantity Float units
-    -> Quantity Float units
-    -> Quantity Float units
-quantityClampAbsToAtLeast maxAbsValue quantity =
-    if quantity |> Quantity.lessThanZero then
-        quantity
-            |> Quantity.min
-                (maxAbsValue |> Quantity.negate)
-
-    else
-        quantity
-            |> Quantity.max
-                maxAbsValue
 
 
 reactToEvent : Event -> State -> ( State, Cmd Event )
@@ -430,6 +405,8 @@ simulateCollisionWithPeek config state =
 
     else
         let
+            -- TODO apply user input directly to wheel
+            -- not sure how exactly?
             backWheelForce : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
             backWheelForce =
                 wheelCombinedCollisionForce
@@ -534,6 +511,7 @@ simulateCollisionWithPeek config state =
             , peekStateIfNoCollision =
                 { state
                     | lastSimulationTime = config.peekStateIfNoCollision.lastSimulationTime
+                    , lastPathContactTime = config.peekStateIfNoCollision.lastSimulationTime
                     , motorbikeRotationalSpeed = combinedRotationalForceToApply
                     , motorbikeVelocity =
                         combinedNonRotationalForceToApply
@@ -1449,6 +1427,32 @@ vector2dClampToMaxLength lengthMaximum vector2d =
 
     else
         vector2d
+
+
+quantityClampAbsToAtMost :
+    Quantity Float units
+    -> Quantity Float units
+    -> Quantity Float units
+quantityClampAbsToAtMost maxAbsValue quantity =
+    quantity
+        |> Quantity.clamp
+            (maxAbsValue |> Quantity.negate)
+            maxAbsValue
+
+
+quantityClampAbsToAtLeast :
+    Quantity Float units
+    -> Quantity Float units
+    -> Quantity Float units
+quantityClampAbsToAtLeast maxAbsValue quantity =
+    if quantity |> Quantity.lessThanZero then
+        quantity
+            |> Quantity.min
+                (maxAbsValue |> Quantity.negate)
+
+    else
+        quantity
+            |> Quantity.max maxAbsValue
 
 
 colorTransparent : Color

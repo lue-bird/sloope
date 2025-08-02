@@ -13,8 +13,6 @@ npx elm-watch hot
 and open the shown http link.
 
 ## TODO
-- only/mainly take player input when last collision (ground contact) time
-  was recent
 - add itch page (ugh)
 - never let the camera move below or above dead zones
 - actual level
