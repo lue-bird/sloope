@@ -17,7 +17,6 @@ and open the shown http link.
   → then only/mainly take player input as how much to accelerate while snapped
   To figure out: interaction with only one wheel snapped = ?
   To figure out: when exactly to "unsnap"?
-- add shadows
 - add itch page (ugh)
 - add camera effects
 - add props
@@ -26,6 +25,7 @@ and open the shown http link.
 - music
 - sound effect, pitch/intensity directly mapped from wheel movement
 
-too small bugs to probably matter
+too to probably matter
 - wheels on both sides of a line should be prevented by adding collision to the connection from back to front wheel
 - angle of arcs is based on connection between start and end, not actual angle
+- apply effects like gradients to shadows or glow to platforms

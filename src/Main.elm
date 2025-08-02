@@ -83,12 +83,12 @@ initialState =
         Length.meters 0 |> Quantity.per Duration.second
     , motorbikeCenter =
         Point2d.meters
-            (-0.1 + (playerLengthBackToFrontAxis |> Length.inMeters) / 2)
+            -0.1
             0.5
     , motorbikeVelocity =
-        Vector2d.meters 0 0
+        Vector2d.meters 0.4 0
             |> Vector2d.per Duration.second
-    , motorbikeAngle = Angle.turns 0
+    , motorbikeAngle = Angle.turns -0.02
     , motorbikeRotationalSpeed =
         Length.meters 0.02
             |> Quantity.per Duration.second
@@ -181,7 +181,7 @@ reactToEvent event state =
                     state.playerInputSpeed
                         |> Quantity.plus
                             (Length.meters
-                                (0.16
+                                (0.25
                                     * (case gameplayKey of
                                         GameplayKeyArrowLeft ->
                                             -1
@@ -193,7 +193,7 @@ reactToEvent event state =
                                 |> Quantity.per Duration.second
                             )
                         |> quantityClampAbsToAtMost
-                            (Length.meters 0.18
+                            (Length.meters 0.28
                                 |> Quantity.per Duration.second
                             )
               }
@@ -809,6 +809,26 @@ minimumDeathHeight =
         |> Quantity.plus (Length.meters 6)
 
 
+drivingPathFullLength : Length
+drivingPathFullLength =
+    point2dDistanceBetween
+        (case drivingPath |> List.head of
+            Nothing ->
+                Point2d.meters 0 0
+
+            Just drivingPathFirstArc ->
+                drivingPathFirstArc.start
+        )
+        (case drivingPath |> listLast of
+            Nothing ->
+                Point2d.meters 0 0
+
+            Just drivingPathFirstArc ->
+                drivingPathFirstArc.end
+        )
+        |> Quantity.plus (Length.meters 1)
+
+
 motorbikeDeriveBackWheelPosition :
     { center : Point2d Length.Meters ()
     , angle : Angle
@@ -899,12 +919,83 @@ stateToDocument state =
                         state.windowSize.height
                         * 0.2
               in
-              [ let
+              [ motorbikeToSvg
+                    { velocity = state.motorbikeVelocity
+                    , angle = state.motorbikeAngle
+                    , playerInputSpeed = state.playerInputSpeed
+                    , wheelAngle = state.motorbikeWheelAngle
+                    }
+              , let
                     cameraPosition : { x : Float, y : Float }
                     cameraPosition =
                         state.motorbikeCenter |> Point2d.toMeters
                 in
                 [ drivingPath
+                    |> List.map
+                        (\drivingPathSegment ->
+                            let
+                                geometry : Arc2d Length.Meters ()
+                                geometry =
+                                    { start = drivingPathSegment.start
+                                    , end = drivingPathSegment.end
+                                    , bendPercentage = drivingPathSegment.bendPercentage
+                                    }
+                                        |> drivingPathSegmentToArc2d
+
+                                shadowLeftStart : Point2d Length.Meters ()
+                                shadowLeftStart =
+                                    geometry |> Arc2d.startPoint
+
+                                levelProgress : Float
+                                levelProgress =
+                                    (state.motorbikeCenter
+                                        |> Point2d.xCoordinate
+                                        |> Length.inMeters
+                                    )
+                                        / (drivingPathFullLength
+                                            |> Length.inMeters
+                                          )
+                            in
+                            Svg.path
+                                [ Svg.Attributes.d
+                                    (Svg.PathD.pathD
+                                        (Svg.PathD.M
+                                            (shadowLeftStart
+                                                |> Point2d.toTuple Length.inMeters
+                                            )
+                                            :: (geometry |> pathDArc)
+                                            ++ [ Svg.PathD.L
+                                                    (shadowLeftStart
+                                                        |> Point2d.translateBy
+                                                            (Vector2d.meters 0 -1000
+                                                                |> Vector2d.rotateBy
+                                                                    (Angle.turns
+                                                                        (-0.07
+                                                                            - 0.212
+                                                                            * levelProgress
+                                                                        )
+                                                                    )
+                                                            )
+                                                        |> Point2d.toTuple Length.inMeters
+                                                    )
+                                               , Svg.PathD.Z
+                                               ]
+                                        )
+                                    )
+                                , Svg.Attributes.fill
+                                    (Color.rgba
+                                        0
+                                        0
+                                        0.07
+                                        (0.2 + 0.4 * levelProgress)
+                                        |> Color.toCssString
+                                    )
+                                ]
+                                []
+                        )
+                    |> Svg.g
+                        []
+                , drivingPath
                     |> List.map drivingPathSegmentToSvg
                     |> Svg.g []
                 , svgTranslated { x = 0, y = 0.84 }
@@ -931,12 +1022,6 @@ stateToDocument state =
                         { x = -cameraPosition.x
                         , y = -cameraPosition.y
                         }
-              , motorbikeToSvg
-                    { velocity = state.motorbikeVelocity
-                    , angle = state.motorbikeAngle
-                    , playerInputSpeed = state.playerInputSpeed
-                    , wheelAngle = state.motorbikeWheelAngle
-                    }
               ]
                 |> svgScaled
                     { x = windowScale
@@ -1168,7 +1253,7 @@ drivingPathSegmentToSvg drivingPathSegment =
         )
         [ Svg.Attributes.strokeWidth (drivingPathStrokeWidth |> Length.inMeters |> String.fromFloat)
         , Svg.Attributes.stroke (Color.rgb 0.75 0.95 1 |> Color.toCssString)
-        , Svg.Attributes.fill (Color.rgba 0 0.5 0.5 0.15 |> Color.toCssString)
+        , Svg.Attributes.fill (Color.rgba 0 0 0 0 |> Color.toCssString)
         , Svg.Attributes.strokeLinecap "round"
         ]
 
@@ -1249,6 +1334,11 @@ drivingPath =
         |> arcToLineSegments
     , { start = Point2d.meters 7 -3.4
       , end = Point2d.meters 10 0
+      , bendPercentage = 0.4
+      }
+        |> arcToLineSegments
+    , { start = Point2d.meters 10 0
+      , end = Point2d.meters 13 -3.4
       , bendPercentage = 0.4
       }
         |> arcToLineSegments
@@ -1380,3 +1470,16 @@ listIsFilled list =
 
         [] ->
             False
+
+
+listLast : List a -> Maybe a
+listLast list =
+    case list of
+        [] ->
+            Nothing
+
+        [ onlyElement ] ->
+            Just onlyElement
+
+        _ :: filledTail ->
+            listLast filledTail
