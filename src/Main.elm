@@ -1102,7 +1102,7 @@ stateToDocument state =
                                         0
                                         0
                                         0.07
-                                        (0.2 + 0.4 * levelProgress)
+                                        (0.2 + 0.29 * levelProgress)
                                         |> Color.toCssString
                                     )
                                 ]
@@ -1763,7 +1763,7 @@ drivingPath =
     , { start = Point2d.meters 101.2 14
       , end = Point2d.meters 120 14
       , drivingDirection = Forwards
-      , bendPercentage = 0.99
+      , bendPercentage = 0.95
       }
         |> arcToRightToLineSegments
     ]
