@@ -102,7 +102,7 @@ initialState =
     , motorbikeCenter =
         -- change to get a "checkpoint"
         -- TODO Point2d.meters -0.6 0.5
-        Point2d.meters 76 5
+        Point2d.meters 110 7
     , motorbikeVelocity =
         Vector2d.meters 0.2 0
             |> Vector2d.per Duration.second
@@ -288,7 +288,7 @@ reactToEvent event state =
                                             |> Quantity.multiplyBy 0.89
                                             |> Quantity.plus
                                                 (Length.meters
-                                                    (0.42
+                                                    (0.1
                                                         * ((if state.forwardsInputActive then
                                                                 1
 
@@ -1120,6 +1120,87 @@ stateToDocument state =
                             [ Svg.text "arrow keys →/← to" ]
                         ]
                     ]
+                , svgTranslated { x = -1.19, y = 0.36 }
+                    [ svgScaled { x = 1, y = -1 }
+                        [ Svg.text_
+                            [ Svg.Attributes.fontSize "0.19"
+                            , Svg.Attributes.fill (Color.rgba 0 0.25 0 0.7 |> Color.toCssString)
+                            ]
+                            [ Svg.text """🌷""" ]
+                        ]
+                    ]
+                , svgTranslated { x = 5.19, y = -2.56 }
+                    [ svgScaled { x = 1, y = -1 }
+                        [ Svg.text_
+                            [ Svg.Attributes.fontSize "0.1"
+                            , Svg.Attributes.fill (Color.rgba 0.8 1 0.5 0.7 |> Color.toCssString)
+                            ]
+                            [ Svg.text """𓍢ִ໋🌷͙֒""" ]
+                        ]
+                    ]
+                , svgTranslated { x = 5, y = -5.02 }
+                    [ svgScaled { x = 1, y = -1 }
+                        [ Svg.text_
+                            [ Svg.Attributes.fontSize "0.101"
+                            , Svg.Attributes.fill (Color.rgba 1 1 1 1 |> Color.toCssString)
+                            ]
+                            [ Svg.text """𓍊𓋼𓍊𓋼𓍊𓍊𓋼𓍊𓋼𓍊""" ]
+                        ]
+                    ]
+                , svgTranslated { x = 10, y = -0.9 }
+                    [ svgScaled { x = 1, y = -1 }
+                        [ Svg.text_
+                            [ Svg.Attributes.fontSize "0.101"
+                            , Svg.Attributes.fill (Color.rgba 1 1 1 1 |> Color.toCssString)
+                            ]
+                            [ Svg.text """🌺""" ]
+                        ]
+                    ]
+                , svgTranslated { x = 0, y = -0.2 }
+                    [ svgScaled { x = 1, y = -1 }
+                        [ Svg.text_
+                            [ Svg.Attributes.fontSize "1"
+                            , Svg.Attributes.fill (Color.rgba 1 1 1 1 |> Color.toCssString)
+                            ]
+                            [ Svg.text """⛩️""" ]
+                        ]
+                    ]
+                , svgTranslated { x = 0.4, y = -0.3 }
+                    [ svgScaled { x = 1, y = -1 }
+                        [ Svg.text_
+                            [ Svg.Attributes.fontSize "0.8"
+                            , Svg.Attributes.fill (Color.rgba 0 0.25 0 0.7 |> Color.toCssString)
+                            ]
+                            [ Svg.text "෴" ]
+                        ]
+                    ]
+                , svgTranslated { x = 0.47, y = -0.3 }
+                    [ svgScaled { x = 1, y = -1 }
+                        [ Svg.text_
+                            [ Svg.Attributes.fontSize "0.5"
+                            , Svg.Attributes.fill (Color.rgba 0 0.25 0 0.7 |> Color.toCssString)
+                            ]
+                            [ Svg.text "෴" ]
+                        ]
+                    ]
+                , svgTranslated { x = 0.1, y = -0.3 }
+                    [ svgScaled { x = 1, y = -1 }
+                        [ Svg.text_
+                            [ Svg.Attributes.fontSize "0.14"
+                            , Svg.Attributes.fill (Color.rgba 0 0.25 0 0.3 |> Color.toCssString)
+                            ]
+                            [ Svg.text """🌸""" ]
+                        ]
+                    ]
+                , svgTranslated { x = 1, y = -0.3 }
+                    [ svgScaled { x = 1, y = -1 }
+                        [ Svg.text_
+                            [ Svg.Attributes.fontSize "0.14"
+                            , Svg.Attributes.fill (Color.rgba 0 0.25 0 0.7 |> Color.toCssString)
+                            ]
+                            [ Svg.text """🌸""" ]
+                        ]
+                    ]
                 , svgTranslated { x = 0, y = 0.65 }
                     [ svgScaled { x = 1, y = -1 }
                         [ Svg.text_
@@ -1169,6 +1250,16 @@ stateToDocument state =
                             , Svg.Attributes.fill (Color.rgb 0.7 0.8 1 |> Color.toCssString)
                             ]
                             [ Svg.text "keep going" ]
+                        ]
+                    ]
+                , svgTranslated { x = 119.925, y = 14.07 }
+                    [ svgScaled { x = 1, y = -1 }
+                        [ Svg.text_
+                            [ Svg.Attributes.fontSize "0.3"
+                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                            , Svg.Attributes.fontWeight "bold"
+                            ]
+                            [ Svg.text """🚩""" ]
                         ]
                     ]
                 , svgTranslated { x = 120, y = 15.2 }
@@ -1273,6 +1364,26 @@ svgDefinitions =
                     [ Svg.Attributes.in_ "SourceGraphic" ]
                     []
                 ]
+            ]
+        , Svg.filter
+            [ Svg.Attributes.id "grassy" ]
+            [ Svg.feTurbulence
+                [ Svg.Attributes.type_ "turbulence"
+                , Svg.Attributes.baseFrequency "0.012 0.02"
+                , Svg.Attributes.numOctaves "2"
+                , Svg.Attributes.result "turbulence"
+                , Svg.Attributes.seed "1"
+                , Svg.Attributes.stitchTiles "stitch"
+                ]
+                []
+            , Svg.feDisplacementMap
+                [ Svg.Attributes.in_ "SourceGraphic"
+                , Svg.Attributes.in2 "turbulence"
+                , Svg.Attributes.scale "50"
+                , Svg.Attributes.xChannelSelector "R"
+                , Svg.Attributes.yChannelSelector "G"
+                ]
+                []
             ]
         ]
 
@@ -1506,7 +1617,7 @@ drivingPathSegmentToSvg drivingPathSegment =
              }
                 |> drivingPathSegmentToArc2d
             )
-            [ Svg.Attributes.strokeWidth (drivingPathStrokeWidth |> Quantity.multiplyBy 0.2 |> Length.inMeters |> String.fromFloat)
+            [ Svg.Attributes.strokeWidth (drivingPathStrokeWidth |> Quantity.multiplyBy 0.35 |> Length.inMeters |> String.fromFloat)
             , Svg.Attributes.stroke (Color.rgba 0.75 0.95 1 1 |> Color.toCssString)
             , Svg.Attributes.fill "none"
 
@@ -1670,8 +1781,6 @@ drivingPath =
       , end = Point2d.meters 61 3
       , bendPercentage = 0.5
       , drivingDirection = Backwards
-
-      -- really?
       }
         |> arcToRightToLineSegments
     , { start = Point2d.meters 63 1
@@ -1680,12 +1789,10 @@ drivingPath =
       , drivingDirection = Forwards
       }
         |> arcToRightToLineSegments
-    , { start = Point2d.meters 71 2
+    , { start = Point2d.meters 71.2 1.7
       , end = Point2d.meters 67 2
       , bendPercentage = 0.5
       , drivingDirection = Backwards
-
-      -- really?
       }
         |> arcToRightToLineSegments
     , { start = Point2d.meters 71 1
