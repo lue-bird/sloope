@@ -12,6 +12,7 @@ import Browser.Events
 import Color exposing (Color)
 import Direction2d exposing (Direction2d)
 import Duration exposing (Duration)
+import Html exposing (Html)
 import Json.Decode
 import Length exposing (Length)
 import LineSegment2d exposing (LineSegment2d)
@@ -23,6 +24,7 @@ import Quantity exposing (Quantity)
 import Quantity.Interval
 import Svg exposing (Svg)
 import Svg.Attributes
+import Svg.Events
 import Svg.PathD
 import Task
 import Time
@@ -39,7 +41,17 @@ port playAudio :
 
 type alias State =
     { windowSize : { height : Float, width : Float }
-    , lastSimulationTime : Maybe Time.Posix
+    , specific : StateSpecific
+    }
+
+
+type StateSpecific
+    = StateMenu
+    | StateGameplay GameplayState
+
+
+type alias GameplayState =
+    { lastSimulationTime : Maybe Time.Posix
     , startTime : Maybe Time.Posix
     , playerInputSpeed :
         -- the unit of this is super fake
@@ -58,6 +70,7 @@ type alias State =
 
 type Event
     = WindowSized { width : Float, height : Float }
+    | StartButtonPressed
     | StartTimeReceived Time.Posix
     | SimulationTick Time.Posix
     | GameplayKeyDown GameplayKey
@@ -69,31 +82,33 @@ main =
     Browser.document
         { init =
             \() ->
-                ( initialState
-                , [ Browser.Dom.getViewport
-                        |> Task.perform
-                            (\viewport ->
-                                WindowSized
-                                    { width = viewport.viewport.width
-                                    , height = viewport.viewport.height
-                                    }
-                            )
-                  , Time.now
-                        |> Task.perform
-                            StartTimeReceived
-                  ]
-                    |> Cmd.batch
+                ( { windowSize = { width = 1920, height = 1080 }
+                  , specific = StateMenu
+                  }
+                , Browser.Dom.getViewport
+                    |> Task.perform
+                        (\viewport ->
+                            WindowSized
+                                { width = viewport.viewport.width
+                                , height = viewport.viewport.height
+                                }
+                        )
                 )
-        , view = stateToDocument
+        , view =
+            \state ->
+                { title = "veloop"
+                , body =
+                    [ stateToHtml state
+                    ]
+                }
         , update = reactToEvent
         , subscriptions = stateToSubscriptions
         }
 
 
-initialState : State
-initialState =
-    { windowSize = { width = 1920, height = 1080 }
-    , lastSimulationTime = Nothing
+initialGameplayState : GameplayState
+initialGameplayState =
+    { lastSimulationTime = Nothing
     , startTime = Nothing
     , playerInputSpeed =
         Length.meters 0 |> Quantity.per Duration.second
@@ -102,8 +117,7 @@ initialState =
     , motorbikeCenter =
         -- change to get a "checkpoint"
         Point2d.meters -0.6 0.5
-    , -- Point2d.meters 110 7
-      motorbikeVelocity =
+    , motorbikeVelocity =
         Vector2d.meters 0.2 0
             |> Vector2d.per Duration.second
     , motorbikeAngle = Angle.turns -0.12
@@ -116,7 +130,7 @@ initialState =
 
 
 stateToSubscriptions : State -> Sub Event
-stateToSubscriptions _ =
+stateToSubscriptions state =
     [ Browser.Events.onResize
         (\width height ->
             WindowSized
@@ -124,12 +138,22 @@ stateToSubscriptions _ =
                 , height = height |> Basics.toFloat
                 }
         )
-    , Time.every (1000 / 60)
-        SimulationTick
-    , Browser.Events.onKeyDown
-        (Json.Decode.map GameplayKeyDown gameplayKeyJsonDecoder)
-    , Browser.Events.onKeyUp
-        (Json.Decode.map GameplayKeyUp gameplayKeyJsonDecoder)
+    , case state.specific of
+        StateMenu ->
+            Browser.Events.onKeyDown
+                (Json.Decode.map (\() -> StartButtonPressed)
+                    spaceKeyJsonDecoder
+                )
+
+        StateGameplay _ ->
+            [ Time.every (1000 / 60)
+                SimulationTick
+            , Browser.Events.onKeyDown
+                (Json.Decode.map GameplayKeyDown gameplayKeyJsonDecoder)
+            , Browser.Events.onKeyUp
+                (Json.Decode.map GameplayKeyUp gameplayKeyJsonDecoder)
+            ]
+                |> Sub.batch
     ]
         |> Sub.batch
 
@@ -157,229 +181,277 @@ gameplayKeyJsonDecoder =
 
 
 reactToEvent : Event -> State -> ( State, Cmd Event )
-reactToEvent event state =
+reactToEvent event state_ =
     case event of
         WindowSized newSize ->
-            ( { state
+            ( { state_
                 | windowSize = newSize
               }
             , Cmd.none
             )
 
+        StartButtonPressed ->
+            ( { state_
+                | specific = StateGameplay initialGameplayState
+              }
+            , Time.now
+                |> Task.perform StartTimeReceived
+            )
+
         StartTimeReceived startTime ->
-            ( { state | startTime = Just startTime }
-            , Cmd.none
-            )
-
-        GameplayKeyDown gameplayKey ->
-            ( case gameplayKey of
-                GameplayKeyArrowRight ->
-                    { state | forwardsInputActive = True }
-
-                GameplayKeyArrowLeft ->
-                    { state | backwardsInputActive = True }
-            , if
-                Basics.not state.forwardsInputActive
-                    && Basics.not state.backwardsInputActive
-                    && (state.playerInputSpeed
-                            |> Quantity.abs
-                            |> Quantity.lessThan
-                                (Length.meters 0.1
-                                    |> Quantity.per Duration.second
-                                )
-                       )
-              then
-                case gameplayKey of
-                    GameplayKeyArrowLeft ->
-                        playAudio
-                            { name = "tough-motorbike-decelerate"
-                            , playbackRate = 1.35
-                            , volume = 0.051
-                            }
-
-                    GameplayKeyArrowRight ->
-                        playAudio
-                            { name = "motorbike-accelerate"
-                            , playbackRate = 1
-                            , volume = 0.465
-                            }
-
-              else
-                Cmd.none
-            )
-
-        GameplayKeyUp gameplayKey ->
-            ( case gameplayKey of
-                GameplayKeyArrowRight ->
-                    { state | forwardsInputActive = False }
-
-                GameplayKeyArrowLeft ->
-                    { state | backwardsInputActive = False }
-            , Cmd.none
-            )
-
-        SimulationTick currentTime ->
-            case state.lastSimulationTime of
-                Nothing ->
-                    ( { state
-                        | lastSimulationTime = Just currentTime
+            case state_.specific of
+                StateGameplay gameplayState ->
+                    ( { state_
+                        | specific =
+                            StateGameplay { gameplayState | startTime = Just startTime }
                       }
                     , Cmd.none
                     )
 
-                Just lastSimulationTime ->
-                    if
-                        ((state.motorbikeCenter |> Point2d.yCoordinate)
-                            |> Quantity.lessThanOrEqualTo belowIsRespawn
-                        )
-                            || ((state.motorbikeCenter |> Point2d.yCoordinate)
-                                    |> Quantity.greaterThanOrEqualTo minimumDeathHeight
+                _ ->
+                    ( state_, Cmd.none )
+
+        GameplayKeyDown gameplayKey ->
+            case state_.specific of
+                StateGameplay gameplayState ->
+                    ( { state_
+                        | specific =
+                            StateGameplay
+                                (case gameplayKey of
+                                    GameplayKeyArrowRight ->
+                                        { gameplayState | forwardsInputActive = True }
+
+                                    GameplayKeyArrowLeft ->
+                                        { gameplayState | backwardsInputActive = True }
+                                )
+                      }
+                    , if
+                        Basics.not gameplayState.forwardsInputActive
+                            && Basics.not gameplayState.backwardsInputActive
+                            && (gameplayState.playerInputSpeed
+                                    |> Quantity.abs
+                                    |> Quantity.lessThan
+                                        (Length.meters 0.1
+                                            |> Quantity.per Duration.second
+                                        )
                                )
-                    then
-                        ( { initialState
-                            | windowSize = state.windowSize
+                      then
+                        case gameplayKey of
+                            GameplayKeyArrowLeft ->
+                                playAudio
+                                    { name = "tough-motorbike-decelerate"
+                                    , playbackRate = 1.35
+                                    , volume = 0.051
+                                    }
 
-                            -- re-add score etc
-                          }
-                        , Time.now
-                            |> Task.perform StartTimeReceived
-                        )
+                            GameplayKeyArrowRight ->
+                                playAudio
+                                    { name = "motorbike-accelerate"
+                                    , playbackRate = 1
+                                    , volume = 0.465
+                                    }
 
-                    else
-                        let
-                            durationSinceLastTick : Duration
-                            durationSinceLastTick =
-                                Duration.from lastSimulationTime
-                                    currentTime
+                      else
+                        Cmd.none
+                    )
 
-                            peekStateIfNoCollision : State
-                            peekStateIfNoCollision =
+                _ ->
+                    ( state_, Cmd.none )
+
+        GameplayKeyUp gameplayKey ->
+            case state_.specific of
+                StateGameplay gameplayState ->
+                    ( { state_
+                        | specific =
+                            StateGameplay
+                                (case gameplayKey of
+                                    GameplayKeyArrowRight ->
+                                        { gameplayState | forwardsInputActive = False }
+
+                                    GameplayKeyArrowLeft ->
+                                        { gameplayState | backwardsInputActive = False }
+                                )
+                      }
+                    , Cmd.none
+                    )
+
+                _ ->
+                    ( state_, Cmd.none )
+
+        SimulationTick currentTime ->
+            case state_.specific of
+                StateGameplay state ->
+                    case state.lastSimulationTime of
+                        Nothing ->
+                            ( { state_
+                                | specific =
+                                    StateGameplay
+                                        { state | lastSimulationTime = Just currentTime }
+                              }
+                            , Cmd.none
+                            )
+
+                        Just lastSimulationTime ->
+                            if
+                                ((state.motorbikeCenter |> Point2d.yCoordinate)
+                                    |> Quantity.lessThanOrEqualTo belowIsRespawn
+                                )
+                                    || ((state.motorbikeCenter |> Point2d.yCoordinate)
+                                            |> Quantity.greaterThanOrEqualTo minimumDeathHeight
+                                       )
+                            then
+                                ( { state_
+                                    | specific =
+                                        StateGameplay
+                                            initialGameplayState
+                                  }
+                                , Time.now
+                                    |> Task.perform StartTimeReceived
+                                )
+
+                            else
                                 let
-                                    newMotorbikeWheelAngle : Quantity Float Angle.Radians
-                                    newMotorbikeWheelAngle =
-                                        state.motorbikeWheelAngle
-                                            |> Quantity.minus
-                                                (Angle.turns
-                                                    (((state.playerInputSpeed
-                                                        |> Quantity.for Duration.second
+                                    durationSinceLastTick : Duration
+                                    durationSinceLastTick =
+                                        Duration.from lastSimulationTime
+                                            currentTime
+
+                                    peekStateIfNoCollision : GameplayState
+                                    peekStateIfNoCollision =
+                                        let
+                                            newMotorbikeWheelAngle : Quantity Float Angle.Radians
+                                            newMotorbikeWheelAngle =
+                                                state.motorbikeWheelAngle
+                                                    |> Quantity.minus
+                                                        (Angle.turns
+                                                            (((state.playerInputSpeed
+                                                                |> Quantity.for Duration.second
+                                                                |> Length.inMeters
+                                                                |> abs
+                                                              )
+                                                                / ((playerLengthBackToFrontAxis |> Length.inMeters)
+                                                                    * pi
+                                                                  )
+                                                             )
+                                                                ^ -- keep spinning even when input is faint
+                                                                  0.21
+                                                                * (state.playerInputSpeed
+                                                                    |> Quantity.for Duration.second
+                                                                    |> Quantity.sign
+                                                                  )
+                                                            )
+                                                            |> quantityClampAbsToAtLeast
+                                                                (Angle.turns 0.0019)
+                                                            |> quantityClampAbsToAtMost
+                                                                (Angle.turns 0.099)
+                                                        )
+
+                                            newPlayerInputSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
+                                            newPlayerInputSpeed =
+                                                state.playerInputSpeed
+                                                    |> Quantity.multiplyBy 0.89
+                                                    |> Quantity.plus
+                                                        (Length.meters
+                                                            (0.1
+                                                                * ((if state.forwardsInputActive then
+                                                                        1
+
+                                                                    else
+                                                                        0
+                                                                   )
+                                                                    + (if state.backwardsInputActive then
+                                                                        -1
+
+                                                                       else
+                                                                        0
+                                                                      )
+                                                                  )
+                                                            )
+                                                            |> Quantity.per Duration.second
+                                                        )
+                                                    |> quantityClampAbsToAtMost
+                                                        (Length.meters 0.42
+                                                            |> Quantity.per Duration.second
+                                                        )
+
+                                            newMotorbikeVelocity : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
+                                            newMotorbikeVelocity =
+                                                state.motorbikeVelocity
+                                                    |> Vector2d.plus
+                                                        (gravity
+                                                            |> Vector2d.for durationSinceLastTick
+                                                        )
+                                                    |> Vector2d.scaleBy 0.996
+                                                    |> vector2dClampToMaxLength
+                                                        (Length.meters 5.2
+                                                            |> Quantity.per Duration.second
+                                                        )
+
+                                            newMotorbikeRotationalSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
+                                            newMotorbikeRotationalSpeed =
+                                                -- TODO prefer straightened out to current velocity direction
+                                                state.motorbikeRotationalSpeed
+                                                    |> Quantity.multiplyBy 0.99
+                                                    |> quantityClampAbsToAtMost
+                                                        (Length.meters 0.9
+                                                            |> Quantity.per Duration.second
+                                                        )
+
+                                            newMotorbikeRotationToApply : Angle
+                                            newMotorbikeRotationToApply =
+                                                Angle.turns
+                                                    ((newMotorbikeRotationalSpeed
+                                                        |> Quantity.for durationSinceLastTick
                                                         |> Length.inMeters
-                                                        |> abs
-                                                      )
+                                                     )
                                                         / ((playerLengthBackToFrontAxis |> Length.inMeters)
                                                             * pi
                                                           )
-                                                     )
-                                                        ^ -- keep spinning even when input is faint
-                                                          0.21
-                                                        * (state.playerInputSpeed
-                                                            |> Quantity.for Duration.second
-                                                            |> Quantity.sign
-                                                          )
                                                     )
-                                                    |> quantityClampAbsToAtLeast
-                                                        (Angle.turns 0.0019)
-                                                    |> quantityClampAbsToAtMost
-                                                        (Angle.turns 0.099)
-                                                )
-
-                                    newPlayerInputSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
-                                    newPlayerInputSpeed =
-                                        state.playerInputSpeed
-                                            |> Quantity.multiplyBy 0.89
-                                            |> Quantity.plus
-                                                (Length.meters
-                                                    (0.1
-                                                        * ((if state.forwardsInputActive then
-                                                                1
-
-                                                            else
-                                                                0
-                                                           )
-                                                            + (if state.backwardsInputActive then
-                                                                -1
-
-                                                               else
-                                                                0
-                                                              )
-                                                          )
-                                                    )
-                                                    |> Quantity.per Duration.second
-                                                )
-                                            |> quantityClampAbsToAtMost
-                                                (Length.meters 0.42
-                                                    |> Quantity.per Duration.second
-                                                )
-
-                                    newMotorbikeVelocity : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
-                                    newMotorbikeVelocity =
-                                        state.motorbikeVelocity
-                                            |> Vector2d.plus
-                                                (gravity
-                                                    |> Vector2d.for durationSinceLastTick
-                                                )
-                                            |> Vector2d.scaleBy 0.996
-                                            |> vector2dClampToMaxLength
-                                                (Length.meters 5.2
-                                                    |> Quantity.per Duration.second
-                                                )
-
-                                    newMotorbikeRotationalSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
-                                    newMotorbikeRotationalSpeed =
-                                        -- TODO prefer straightened out to current velocity direction
-                                        state.motorbikeRotationalSpeed
-                                            |> Quantity.multiplyBy 0.99
-                                            |> quantityClampAbsToAtMost
-                                                (Length.meters 0.9
-                                                    |> Quantity.per Duration.second
-                                                )
-
-                                    newMotorbikeRotationToApply : Angle
-                                    newMotorbikeRotationToApply =
-                                        Angle.turns
-                                            ((newMotorbikeRotationalSpeed
-                                                |> Quantity.for durationSinceLastTick
-                                                |> Length.inMeters
-                                             )
-                                                / ((playerLengthBackToFrontAxis |> Length.inMeters)
-                                                    * pi
-                                                  )
-                                            )
+                                        in
+                                        { state
+                                            | lastSimulationTime = Just currentTime
+                                            , motorbikeRotationalSpeed = newMotorbikeRotationalSpeed
+                                            , motorbikeAngle =
+                                                state.motorbikeAngle
+                                                    |> Quantity.plus newMotorbikeRotationToApply
+                                                    |> Angle.normalize
+                                            , motorbikeVelocity = newMotorbikeVelocity
+                                            , motorbikeCenter =
+                                                state.motorbikeCenter
+                                                    |> Point2d.translateBy
+                                                        (newMotorbikeVelocity
+                                                            |> Vector2d.for durationSinceLastTick
+                                                        )
+                                            , playerInputSpeed = newPlayerInputSpeed
+                                            , motorbikeWheelAngle = newMotorbikeWheelAngle
+                                        }
                                 in
-                                { state
-                                    | lastSimulationTime = Just currentTime
-                                    , motorbikeRotationalSpeed = newMotorbikeRotationalSpeed
-                                    , motorbikeAngle =
-                                        state.motorbikeAngle
-                                            |> Quantity.plus newMotorbikeRotationToApply
-                                            |> Angle.normalize
-                                    , motorbikeVelocity = newMotorbikeVelocity
-                                    , motorbikeCenter =
-                                        state.motorbikeCenter
-                                            |> Point2d.translateBy
-                                                (newMotorbikeVelocity
-                                                    |> Vector2d.for durationSinceLastTick
-                                                )
-                                    , playerInputSpeed = newPlayerInputSpeed
-                                    , motorbikeWheelAngle = newMotorbikeWheelAngle
-                                }
-                        in
-                        ( simulateCollisionWithPeek
-                            { countOfAttemptsTryingToResolve = 0
-                            , peekStateIfNoCollision = peekStateIfNoCollision
-                            , durationSinceLastTick = durationSinceLastTick
-                            }
-                            state
-                        , Cmd.none
-                        )
+                                ( { state_
+                                    | specific =
+                                        StateGameplay
+                                            (simulateCollisionWithPeek
+                                                { countOfAttemptsTryingToResolve = 0
+                                                , peekStateIfNoCollision = peekStateIfNoCollision
+                                                , durationSinceLastTick = durationSinceLastTick
+                                                }
+                                                state
+                                            )
+                                  }
+                                , Cmd.none
+                                )
+
+                _ ->
+                    ( state_, Cmd.none )
 
 
 simulateCollisionWithPeek :
     { countOfAttemptsTryingToResolve : Int
     , durationSinceLastTick : Duration
-    , peekStateIfNoCollision : State
+    , peekStateIfNoCollision : GameplayState
     }
-    -> State
-    -> State
+    -> GameplayState
+    -> GameplayState
 simulateCollisionWithPeek config state =
     if config.countOfAttemptsTryingToResolve >= 25 then
         let
@@ -1007,349 +1079,474 @@ drivingPathSegmentToArc2d geometry =
         (Angle.turns (geometry.bendPercentage * 0.5))
 
 
-stateToDocument : State -> Browser.Document Event
-stateToDocument state =
-    { title = "veloop"
-    , body =
-        [ Svg.svg
-            [ Svg.Attributes.viewBox
-                ("0 0 "
-                    ++ (state.windowSize.width |> String.fromFloat)
-                    ++ " "
-                    ++ (state.windowSize.height |> String.fromFloat)
-                )
+stateToHtml : State -> Html Event
+stateToHtml state =
+    Svg.svg
+        [ Svg.Attributes.viewBox
+            ("0 0 "
+                ++ (state.windowSize.width |> String.fromFloat)
+                ++ " "
+                ++ (state.windowSize.height |> String.fromFloat)
+            )
+        ]
+        (case state.specific of
+            StateMenu ->
+                menuStateToHtml state.windowSize
+
+            StateGameplay gameplayState ->
+                gameplayStateToSvg state.windowSize gameplayState
+        )
+
+
+menuStateToHtml windowSize =
+    [ Svg.rect
+        [ Svg.Attributes.width (windowSize.width |> px)
+        , Svg.Attributes.height (windowSize.height |> px)
+        , Svg.Attributes.fill (Color.rgb 0 0.08 0.2 |> Color.toCssString)
+        , Svg.Events.onMouseDown StartButtonPressed
+        ]
+        []
+    , svgTranslated
+        { x = windowSize.width / 2
+        , y = windowSize.height * 0.4
+        }
+        [ Svg.text_
+            [ Svg.Attributes.fontSize "19"
+            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+            , Svg.Attributes.textAnchor "middle"
+            , Svg.Attributes.pointerEvents "none"
             ]
-            [ -- svgDefinitions,
-              Svg.rect
-                [ Svg.Attributes.width (state.windowSize.width |> px)
-                , Svg.Attributes.height (state.windowSize.height |> px)
-                , Svg.Attributes.fill (Color.rgb 0.2 0 0.08 |> Color.toCssString)
-                ]
-                []
-            , let
-                windowScale : Float
-                windowScale =
-                    Basics.min
-                        state.windowSize.width
-                        state.windowSize.height
-                        * 0.2
-              in
-              [ motorbikeToSvg
-                    { velocity = state.motorbikeVelocity
-                    , angle = state.motorbikeAngle
-                    , playerInputSpeed = state.playerInputSpeed
-                    , wheelAngle = state.motorbikeWheelAngle
-                    }
-              , let
-                    cameraPosition : { x : Float, y : Float }
-                    cameraPosition =
-                        state.motorbikeCenter |> Point2d.toMeters
-                in
-                [ drivingPath
-                    |> List.map
-                        (\drivingPathSegment ->
-                            let
-                                geometry : Arc2d Length.Meters ()
-                                geometry =
-                                    { start = drivingPathSegment.start
-                                    , end = drivingPathSegment.end
-                                    , bendPercentage = drivingPathSegment.bendPercentage
-                                    }
-                                        |> drivingPathSegmentToArc2d
-
-                                shadowLeftStart : Point2d Length.Meters ()
-                                shadowLeftStart =
-                                    geometry |> Arc2d.startPoint
-
-                                levelProgress : Float
-                                levelProgress =
-                                    (state.motorbikeCenter
-                                        |> Point2d.xCoordinate
-                                        |> Length.inMeters
-                                    )
-                                        / (drivingPathFullLength
-                                            |> Length.inMeters
-                                          )
-                            in
-                            Svg.path
-                                [ Svg.Attributes.d
-                                    (Svg.PathD.pathD
-                                        (Svg.PathD.M
-                                            (shadowLeftStart
-                                                |> Point2d.toTuple Length.inMeters
-                                            )
-                                            :: (geometry |> pathDArc)
-                                            ++ [ Svg.PathD.L
-                                                    (shadowLeftStart
-                                                        |> Point2d.translateBy
-                                                            (Vector2d.meters 0 -1000
-                                                                |> Vector2d.rotateBy
-                                                                    (Angle.turns
-                                                                        (-0.07
-                                                                            - 0.2
-                                                                            * levelProgress
-                                                                        )
-                                                                    )
-                                                            )
-                                                        |> Point2d.toTuple Length.inMeters
-                                                    )
-                                               , Svg.PathD.Z
-                                               ]
-                                        )
-                                    )
-                                , Svg.Attributes.fill
-                                    (Color.rgba
-                                        0
-                                        0
-                                        0.07
-                                        (0.2 + 0.2 * levelProgress)
-                                        |> Color.toCssString
-                                    )
-                                ]
-                                []
-                        )
-                    |> Svg.g
-                        []
-                , drivingPathSvg
-                , svgTranslated { x = 0, y = 0.84 }
-                    [ svgScaled { x = 1, y = -1 }
-                        [ Svg.text_
-                            [ Svg.Attributes.fontSize "0.2"
-                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
-                            ]
-                            [ Svg.text "arrow keys →/← to" ]
-                        ]
-                    ]
-                , svgTranslated { x = -1.12, y = 0.36 }
-                    [ svgScaled { x = 1, y = -1 }
-                        [ Svg.text_
-                            [ Svg.Attributes.fontSize "0.19"
-                            , Svg.Attributes.fill (Color.rgba 0 0.25 0 0.7 |> Color.toCssString)
-                            ]
-                            [ Svg.text """🌷""" ]
-                        ]
-                    ]
-                , -- TODO consider "༄" and "𖤣𖥧" and "⚘" and "⸙" and "𖥸" and "🪴" atop the temple
-                  -- and
-                  svgTranslated { x = 5.19, y = -2.56 }
-                    [ svgScaled { x = 1, y = -1 }
-                        [ Svg.text_
-                            [ Svg.Attributes.fontSize "0.1"
-                            , Svg.Attributes.fill (Color.rgba 0.8 1 0.5 0.7 |> Color.toCssString)
-                            ]
-                            [ Svg.text """𓍢ִ໋🌷͙֒""" ]
-                        ]
-                    ]
-                , svgTranslated { x = 5, y = -5.02 }
-                    [ svgScaled { x = 1, y = -1 }
-                        [ Svg.text_
-                            [ Svg.Attributes.fontSize "0.101"
-                            , Svg.Attributes.fill (Color.rgba 1 1 1 1 |> Color.toCssString)
-                            ]
-                            [ Svg.text """𓍊𓋼𓍊𓋼𓍊𓍊𓋼𓍊𓋼𓍊""" ]
-                        ]
-                    ]
-                , svgTranslated { x = 10, y = -0.9 }
-                    [ svgScaled { x = 1, y = -1 }
-                        [ Svg.text_
-                            [ Svg.Attributes.fontSize "0.101"
-                            , Svg.Attributes.fill (Color.rgba 1 1 1 1 |> Color.toCssString)
-                            ]
-                            [ Svg.text """🌺""" ]
-                        ]
-                    ]
-                , svgTranslated { x = 0, y = -0.1 }
-                    [ svgScaled { x = 1, y = -1 }
-                        [ Svg.text_
-                            [ Svg.Attributes.fontSize "0.73"
-                            , Svg.Attributes.fill (Color.rgba 1 1 1 1 |> Color.toCssString)
-                            ]
-                            [ Svg.text """⛩️""" ]
-                        ]
-                    ]
-                , svgTranslated { x = 1.05, y = -0.04 }
-                    [ svgScaled { x = 1, y = -1 }
-                        [ Svg.text_
-                            [ Svg.Attributes.fontSize "0.27"
-                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
-                            , Svg.Attributes.fontWeight "bold"
-                            ]
-                            [ Svg.text """🚩""" ]
-                        ]
-                    ]
-                , svgTranslated { x = 0.4, y = -0.3 }
-                    [ svgScaled { x = 1, y = -1 }
-                        [ Svg.text_
-                            [ Svg.Attributes.fontSize "0.8"
-                            , Svg.Attributes.fill (Color.rgba 0 0.25 0 0.7 |> Color.toCssString)
-                            ]
-                            [ Svg.text "෴" ]
-                        ]
-                    ]
-                , svgTranslated { x = 0.47, y = -0.3 }
-                    [ svgScaled { x = 1, y = -1 }
-                        [ Svg.text_
-                            [ Svg.Attributes.fontSize "0.5"
-                            , Svg.Attributes.fill (Color.rgba 0 0.25 0 0.7 |> Color.toCssString)
-                            ]
-                            [ Svg.text "෴" ]
-                        ]
-                    ]
-                , svgTranslated { x = 0.1, y = -0.3 }
-                    [ svgScaled { x = 1, y = -1 }
-                        [ Svg.text_
-                            [ Svg.Attributes.fontSize "0.14"
-                            , Svg.Attributes.fill (Color.rgba 0 0.25 0 0.3 |> Color.toCssString)
-                            ]
-                            [ Svg.text """🌸""" ]
-                        ]
-                    ]
-                , svgTranslated { x = 1, y = -0.3 }
-                    [ svgScaled { x = 1, y = -1 }
-                        [ Svg.text_
-                            [ Svg.Attributes.fontSize "0.14"
-                            , Svg.Attributes.fill (Color.rgba 0 0.25 0 0.7 |> Color.toCssString)
-                            ]
-                            [ Svg.text """🌸""" ]
-                        ]
-                    ]
-                , svgTranslated { x = 0, y = 0.65 }
-                    [ svgScaled { x = 1, y = -1 }
-                        [ Svg.text_
-                            [ Svg.Attributes.fontSize "0.2"
-                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
-                            , Svg.Attributes.fontWeight "bold"
-                            ]
-                            [ Svg.text "accelerate forwards/backwards" ]
-                        ]
-                    ]
-                , svgTranslated { x = 31, y = 0.5 }
-                    [ svgScaled { x = 1, y = -1 }
-                        [ Svg.text_
-                            [ Svg.Attributes.fontSize "0.2"
-                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
-                            , Svg.Attributes.fontWeight "bold"
-                            ]
-                            [ Svg.text "big jump!" ]
-                        ]
-                    ]
-                , svgTranslated { x = 31.8, y = -4 }
-                    [ svgRotated (Angle.turns -0.25)
-                        [ svgScaled { x = 1, y = -1 }
-                            [ Svg.text_
-                                [ Svg.Attributes.fontSize "0.2"
-                                , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
-                                , Svg.Attributes.fontWeight "bold"
-                                ]
-                                [ Svg.text "noooooooooooooooooooooooooooooooooooooooooooooooooooooooo!" ]
-                            ]
-                        ]
-                    ]
-                , svgTranslated { x = 40, y = 1 }
-                    [ svgScaled { x = 1, y = -1 }
-                        [ Svg.text_
-                            [ Svg.Attributes.fontSize "0.2"
-                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
-                            , Svg.Attributes.fontWeight "bold"
-                            ]
-                            [ Svg.text "take speed" ]
-                        ]
-                    ]
-                , svgTranslated { x = 88, y = 5.3 }
-                    [ svgScaled { x = 1, y = -1 }
-                        [ Svg.text_
-                            [ Svg.Attributes.fontSize "0.15"
-                            , Svg.Attributes.fill (Color.rgb 0.7 0.8 1 |> Color.toCssString)
-                            ]
-                            [ Svg.text "keep going" ]
-                        ]
-                    ]
-                , svgTranslated { x = 119.925, y = 14.07 }
-                    [ svgScaled { x = 1, y = -1 }
-                        [ Svg.text_
-                            [ Svg.Attributes.fontSize "0.3"
-                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
-                            , Svg.Attributes.fontWeight "bold"
-                            ]
-                            [ Svg.text """🚩""" ]
-                        ]
-                    ]
-                , svgTranslated { x = 120, y = 15.2 }
-                    [ svgScaled { x = 1, y = -1 }
-                        [ Svg.text_
-                            [ Svg.Attributes.fontSize "0.2"
-                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
-                            , Svg.Attributes.fontWeight "bold"
-                            ]
-                            [ Svg.text "good job!" ]
-                        ]
-                    ]
-                , svgTranslated { x = 120, y = 16.2 }
-                    [ svgScaled { x = 1, y = -1 }
-                        [ Svg.text_
-                            [ Svg.Attributes.fontSize "0.2"
-                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
-                            , Svg.Attributes.fontWeight "bold"
-                            ]
-                            [ Svg.text "Have a nice day!" ]
-                        ]
-                    ]
-                , svgTranslated { x = 122, y = 8 }
-                    [ svgScaled { x = 1, y = -1 }
-                        [ Svg.text_
-                            [ Svg.Attributes.fontSize "0.2"
-                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
-                            , Svg.Attributes.fontWeight "bold"
-                            ]
-                            [ Svg.text """Ი︵𐑼""" ]
-                        ]
-                    ]
-                , svgTranslated { x = 122.1, y = 7.7 }
-                    [ svgScaled { x = 1, y = -1 }
-                        [ Svg.text_
-                            [ Svg.Attributes.fontSize "0.2"
-                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
-                            , Svg.Attributes.fontWeight "bold"
-                            ]
-                            [ Svg.text "•ᴗ•   ₊˚⊹ᰔ    ꫂ❁" ]
-                        ]
-                    ]
-                , svgTranslated { x = -8, y = -1 }
-                    [ svgScaled { x = 1, y = -1 }
-                        [ Svg.text_
-                            [ Svg.Attributes.fontSize "0.2"
-                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
-                            ]
-                            [ Svg.text "nothing here" ]
-                        ]
-                    ]
-                , svgTranslated { x = -8, y = -2 }
-                    [ svgScaled { x = 1, y = -1 }
-                        [ Svg.text_
-                            [ Svg.Attributes.fontSize "0.2"
-                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
-                            ]
-                            [ Svg.text "૮꒰˶ᵔ ᵕ ᵔ˶꒱ა" ]
-                        ]
-                    ]
-                ]
-                    |> svgTranslated
-                        { x = -cameraPosition.x
-                        , y = -cameraPosition.y
+            [ Svg.text "Hint: r to respawn, no need to refresh" ]
+        ]
+    , svgTranslated
+        { x = windowSize.width / 2
+        , y = windowSize.height / 2
+        }
+        [ Svg.text_
+            [ Svg.Attributes.fontSize "49"
+            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+            , Svg.Attributes.textAnchor "middle"
+            , Svg.Attributes.pointerEvents "none"
+            , Svg.Attributes.fontWeight "bold"
+            ]
+            [ Svg.text "space/click to start" ]
+        , let
+            windowScale : Float
+            windowScale =
+                Basics.min
+                    windowSize.width
+                    windowSize.height
+                    * 0.2
+          in
+          svgScaled { x = windowScale, y = -windowScale }
+            [ svgTranslated
+                { x = 0
+                , y = -1.5
+                }
+                [ svgScaled { x = 3.25, y = 3.25 }
+                    [ motorbikeToSvg
+                        { angle = Angle.turns 0
+                        , velocity = Vector2d.meters 0 0 |> Vector2d.per Duration.second
+                        , playerInputSpeed = Length.meters 0 |> Quantity.per Duration.second
+                        , wheelAngle = Angle.turns 0.4
                         }
-              ]
-                |> svgScaled
-                    { x = windowScale
-                    , y = -windowScale
-                    }
-                |> List.singleton
-                |> svgTranslated
-                    { x = state.windowSize.width / 2
-                    , y = state.windowSize.height / 2
-                    }
+                    ]
+                ]
+            , svgTranslated { x = -1.4, y = -1.4 }
+                [ svgScaled { x = 1, y = -1 }
+                    [ Svg.text_
+                        [ Svg.Attributes.fontSize "0.5"
+                        , Svg.Attributes.fill (Color.rgba 0.8 0.6 0.5 0.5 |> Color.toCssString)
+                        ]
+                        [ Svg.text """🌫""" ]
+                    ]
+                ]
+            , svgTranslated { x = 0, y = 2 }
+                [ svgScaled { x = 1, y = 1 }
+                    [ Svg.text_
+                        [ Svg.Attributes.fontSize "0.5"
+                        , Svg.Attributes.fill (Color.rgba 0.8 1 0.5 1 |> Color.toCssString)
+                        ]
+                        [ Svg.text """🪴""" ]
+                    ]
+                ]
+            , svgArc
+                (Arc2d.from (Point2d.meters -2 -0.5)
+                    (Point2d.meters 2 -0.5)
+                    (Angle.turns 0.4)
+                )
+                [ Svg.Attributes.fill "none"
+                , Svg.Attributes.strokeWidth "0.1"
+                , Svg.Attributes.stroke (Color.rgb 1 1 1 |> Color.toCssString)
+                ]
+            , svgArc
+                (Arc2d.from (Point2d.meters -2 0.7)
+                    (Point2d.meters 2 0.7)
+                    (Angle.turns -0.4)
+                )
+                [ Svg.Attributes.fill "none"
+                , Svg.Attributes.strokeWidth "0.1"
+                , Svg.Attributes.stroke (Color.rgb 1 1 1 |> Color.toCssString)
+                ]
             ]
         ]
-    }
+    ]
+
+
+spaceKeyJsonDecoder : Json.Decode.Decoder ()
+spaceKeyJsonDecoder =
+    Json.Decode.andThen
+        (\key ->
+            case key of
+                " " ->
+                    Json.Decode.succeed ()
+
+                _ ->
+                    Json.Decode.fail "unknown key, ignore"
+        )
+        (Json.Decode.field "key" Json.Decode.string)
+
+
+gameplayStateToSvg : { width : Float, height : Float } -> GameplayState -> List (Svg Event)
+gameplayStateToSvg windowSize state =
+    [ -- not used because slow to render svgDefinitions,
+      Svg.rect
+        [ Svg.Attributes.width (windowSize.width |> px)
+        , Svg.Attributes.height (windowSize.height |> px)
+        , Svg.Attributes.fill (Color.rgb 0.2 0 0.08 |> Color.toCssString)
+        ]
+        []
+    , let
+        windowScale : Float
+        windowScale =
+            Basics.min
+                windowSize.width
+                windowSize.height
+                * 0.2
+      in
+      [ motorbikeToSvg
+            { velocity = state.motorbikeVelocity
+            , angle = state.motorbikeAngle
+            , playerInputSpeed = state.playerInputSpeed
+            , wheelAngle = state.motorbikeWheelAngle
+            }
+      , let
+            cameraPosition : { x : Float, y : Float }
+            cameraPosition =
+                state.motorbikeCenter |> Point2d.toMeters
+        in
+        [ drivingPath
+            |> List.map
+                (\drivingPathSegment ->
+                    let
+                        geometry : Arc2d Length.Meters ()
+                        geometry =
+                            { start = drivingPathSegment.start
+                            , end = drivingPathSegment.end
+                            , bendPercentage = drivingPathSegment.bendPercentage
+                            }
+                                |> drivingPathSegmentToArc2d
+
+                        shadowLeftStart : Point2d Length.Meters ()
+                        shadowLeftStart =
+                            geometry |> Arc2d.startPoint
+
+                        levelProgress : Float
+                        levelProgress =
+                            (state.motorbikeCenter
+                                |> Point2d.xCoordinate
+                                |> Length.inMeters
+                            )
+                                / (drivingPathFullLength
+                                    |> Length.inMeters
+                                  )
+                    in
+                    Svg.path
+                        [ Svg.Attributes.d
+                            (Svg.PathD.pathD
+                                (Svg.PathD.M
+                                    (shadowLeftStart
+                                        |> Point2d.toTuple Length.inMeters
+                                    )
+                                    :: (geometry |> pathDArc)
+                                    ++ [ Svg.PathD.L
+                                            (shadowLeftStart
+                                                |> Point2d.translateBy
+                                                    (Vector2d.meters 0 -1000
+                                                        |> Vector2d.rotateBy
+                                                            (Angle.turns
+                                                                (-0.07
+                                                                    - 0.2
+                                                                    * levelProgress
+                                                                )
+                                                            )
+                                                    )
+                                                |> Point2d.toTuple Length.inMeters
+                                            )
+                                       , Svg.PathD.Z
+                                       ]
+                                )
+                            )
+                        , Svg.Attributes.fill
+                            (Color.rgba
+                                0
+                                0
+                                0.07
+                                (0.2 + 0.2 * levelProgress)
+                                |> Color.toCssString
+                            )
+                        ]
+                        []
+                )
+            |> Svg.g
+                []
+        , drivingPathSvg
+        , textsSvg
+        ]
+            |> svgTranslated
+                { x = -cameraPosition.x
+                , y = -cameraPosition.y
+                }
+      ]
+        |> svgScaled
+            { x = windowScale
+            , y = -windowScale
+            }
+        |> List.singleton
+        |> svgTranslated
+            { x = windowSize.width / 2
+            , y = windowSize.height / 2
+            }
+    ]
+
+
+textsSvg : Svg event_
+textsSvg =
+    Svg.g
+        [ Svg.Attributes.pointerEvents "none"
+        ]
+        [ svgTranslated { x = 0, y = 0.84 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.2"
+                    , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                    ]
+                    [ Svg.text "arrow keys →/← to" ]
+                ]
+            ]
+        , svgTranslated { x = -1.12, y = 0.36 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.19"
+                    , Svg.Attributes.fill (Color.rgba 0 0.25 0 0.7 |> Color.toCssString)
+                    ]
+                    [ Svg.text """🌷""" ]
+                ]
+            ]
+        , -- TODO consider "༄" and "𖤣𖥧" and "⚘" and "⸙" and "𖥸" and atop the temple
+          -- and a bunch of "☁️" further in the level
+          svgTranslated { x = 5.19, y = -2.56 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.1"
+                    , Svg.Attributes.fill (Color.rgba 0.8 1 0.5 0.7 |> Color.toCssString)
+                    ]
+                    [ Svg.text """𓍢ִ໋🌷͙֒""" ]
+                ]
+            ]
+        , svgTranslated { x = 5, y = -5.02 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.101"
+                    , Svg.Attributes.fill (Color.rgba 1 1 1 1 |> Color.toCssString)
+                    ]
+                    [ Svg.text """𓍊𓋼𓍊𓋼𓍊𓍊𓋼𓍊𓋼𓍊""" ]
+                ]
+            ]
+        , svgTranslated { x = 10, y = -0.9 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.101"
+                    , Svg.Attributes.fill (Color.rgba 1 1 1 1 |> Color.toCssString)
+                    ]
+                    [ Svg.text """🌺""" ]
+                ]
+            ]
+        , svgTranslated { x = 0, y = -0.1 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.73"
+                    , Svg.Attributes.fill (Color.rgba 1 1 1 1 |> Color.toCssString)
+                    ]
+                    [ Svg.text """⛩️""" ]
+                ]
+            ]
+        , svgTranslated { x = 1.05, y = -0.04 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.27"
+                    , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                    , Svg.Attributes.fontWeight "bold"
+                    ]
+                    [ Svg.text """🚩""" ]
+                ]
+            ]
+        , svgTranslated { x = 0.4, y = -0.3 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.8"
+                    , Svg.Attributes.fill (Color.rgba 0 0.25 0 0.7 |> Color.toCssString)
+                    ]
+                    [ Svg.text "෴" ]
+                ]
+            ]
+        , svgTranslated { x = 0.47, y = -0.3 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.5"
+                    , Svg.Attributes.fill (Color.rgba 0 0.25 0 0.7 |> Color.toCssString)
+                    ]
+                    [ Svg.text "෴" ]
+                ]
+            ]
+        , svgTranslated { x = 0.1, y = -0.3 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.14"
+                    , Svg.Attributes.fill (Color.rgba 0 0.25 0 0.3 |> Color.toCssString)
+                    ]
+                    [ Svg.text """🌸""" ]
+                ]
+            ]
+        , svgTranslated { x = 1, y = -0.3 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.14"
+                    , Svg.Attributes.fill (Color.rgba 0 0.25 0 0.7 |> Color.toCssString)
+                    ]
+                    [ Svg.text """🌸""" ]
+                ]
+            ]
+        , svgTranslated { x = 0, y = 0.65 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.2"
+                    , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                    , Svg.Attributes.fontWeight "bold"
+                    ]
+                    [ Svg.text "accelerate forwards/backwards" ]
+                ]
+            ]
+        , svgTranslated { x = 31, y = 0.5 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.2"
+                    , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                    , Svg.Attributes.fontWeight "bold"
+                    ]
+                    [ Svg.text "big jump!" ]
+                ]
+            ]
+        , svgTranslated { x = 31.8, y = -4 }
+            [ svgRotated (Angle.turns -0.25)
+                [ svgScaled { x = 1, y = -1 }
+                    [ Svg.text_
+                        [ Svg.Attributes.fontSize "0.2"
+                        , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                        , Svg.Attributes.fontWeight "bold"
+                        ]
+                        [ Svg.text "noooooooooooooooooooooooooooooooooooooooooooooooooooooooo!" ]
+                    ]
+                ]
+            ]
+        , svgTranslated { x = 40, y = 1 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.2"
+                    , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                    , Svg.Attributes.fontWeight "bold"
+                    ]
+                    [ Svg.text "take speed" ]
+                ]
+            ]
+        , svgTranslated { x = 88, y = 5.3 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.15"
+                    , Svg.Attributes.fill (Color.rgb 0.7 0.8 1 |> Color.toCssString)
+                    ]
+                    [ Svg.text "keep going" ]
+                ]
+            ]
+        , svgTranslated { x = 119.925, y = 14.07 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.3"
+                    , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                    , Svg.Attributes.fontWeight "bold"
+                    ]
+                    [ Svg.text """🚩""" ]
+                ]
+            ]
+        , svgTranslated { x = 120, y = 15.2 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.2"
+                    , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                    , Svg.Attributes.fontWeight "bold"
+                    ]
+                    [ Svg.text "good job!" ]
+                ]
+            ]
+        , svgTranslated { x = 120, y = 16.2 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.2"
+                    , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                    , Svg.Attributes.fontWeight "bold"
+                    ]
+                    [ Svg.text "Have a nice day!" ]
+                ]
+            ]
+        , svgTranslated { x = 122, y = 8 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.2"
+                    , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                    , Svg.Attributes.fontWeight "bold"
+                    ]
+                    [ Svg.text """Ი︵𐑼""" ]
+                ]
+            ]
+        , svgTranslated { x = 122.1, y = 7.7 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.2"
+                    , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                    , Svg.Attributes.fontWeight "bold"
+                    ]
+                    [ Svg.text "•ᴗ•   ₊˚⊹ᰔ    ꫂ❁" ]
+                ]
+            ]
+        , svgTranslated { x = -8, y = -1 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.2"
+                    , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                    ]
+                    [ Svg.text "nothing here" ]
+                ]
+            ]
+        , svgTranslated { x = -8, y = -2 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.2"
+                    , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                    ]
+                    [ Svg.text "૮꒰˶ᵔ ᵕ ᵔ˶꒱ა" ]
+                ]
+            ]
+        ]
 
 
 drivingPathSvg : Svg Event

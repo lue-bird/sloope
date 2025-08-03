@@ -14,10 +14,13 @@ and open the shown http link.
 
 ## TODO
 - add itch page (ugh)
-- menu as in a start button
 - music (50%)
+- background go from friendly to current red (preferably even a bit of gradient)
+- at "take speed", remove the backoff, instead continue big line all the way down
 
 ### only if time
+- r to reset + explain
+- optimize
 - add fumes when accelerating
 - add props
 - add camera effects like zoom depending on speed or slight angling (= more zoomed in the start)
