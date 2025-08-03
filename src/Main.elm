@@ -1363,8 +1363,7 @@ textsAndScenerySvg =
                     [ Svg.text """🌷""" ]
                 ]
             ]
-        , -- TODO consider "༄" and "𖤣𖥧" and "⚘" and "⸙" and "𖥸" and atop the temple
-          -- and a bunch of "☁️" further in the level
+        , -- TODO consider "𖥸"
           svgTranslated { x = 5.19, y = -2.56 }
             [ svgScaled { x = 1, y = -1 }
                 [ Svg.text_
@@ -1549,9 +1548,17 @@ textsAndScenerySvg =
                 [ Svg.text_
                     [ Svg.Attributes.fontSize "0.5"
                     , Svg.Attributes.fill (Color.rgba 0 0 0.2 0.2 |> Color.toCssString)
-                    , Svg.Attributes.fontWeight "bold"
                     ]
                     [ Svg.text """🌨""" ]
+                ]
+            ]
+        , svgTranslated { x = 56.5, y = 0.2 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.5"
+                    , Svg.Attributes.fill (Color.rgba 0 0 0 1 |> Color.toCssString)
+                    ]
+                    [ Svg.text """𖤣𖥧⚘ ⸙""" ]
                 ]
             ]
         , svgTranslated { x = 62, y = 3.7 }
@@ -1573,13 +1580,22 @@ textsAndScenerySvg =
                     [ Svg.text """☣️""" ]
                 ]
             ]
+        , svgTranslated { x = 71.95, y = 1 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.4"
+                    , Svg.Attributes.fill (Color.rgba 0.8 0.8 1 1 |> Color.toCssString)
+                    ]
+                    [ Svg.text """༄""" ]
+                ]
+            ]
         , svgTranslated { x = 88, y = 5.3 }
             [ svgScaled { x = 1, y = -1 }
                 [ Svg.text_
                     [ Svg.Attributes.fontSize "0.15"
-                    , Svg.Attributes.fill (Color.rgb 0.7 0.8 1 |> Color.toCssString)
+                    , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
                     ]
-                    [ Svg.text "keep going" ]
+                    [ Svg.text "keep forwards" ]
                 ]
             ]
         , svgTranslated { x = 100.92, y = 14.04 }
@@ -1589,6 +1605,24 @@ textsAndScenerySvg =
                     , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
                     ]
                     [ Svg.text """🚧""" ]
+                ]
+            ]
+        , svgTranslated { x = 110.92, y = 6.16 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.8"
+                    , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                    ]
+                    [ Svg.text """🪸""" ]
+                ]
+            ]
+        , svgTranslated { x = 104.92, y = 10.16 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.5"
+                    , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                    ]
+                    [ Svg.text """🐡""" ]
                 ]
             ]
         , svgTranslated { x = 119.925, y = 14.07 }
@@ -1947,21 +1981,7 @@ drivingPathSegmentToSvg drivingPathSegment =
              }
                 |> drivingPathSegmentToArc2d
             )
-            [ Svg.Attributes.strokeWidth (drivingPathStrokeWidth |> Quantity.multiplyBy 1 |> Length.inMeters |> String.fromFloat)
-            , Svg.Attributes.stroke (Color.rgb 0.1 0.15 0.2 |> Color.toCssString)
-            , Svg.Attributes.fill "none"
-            , Svg.Attributes.strokeLinecap "round"
-
-            -- , Svg.Attributes.filter "url(#glow)"
-            ]
-        , svgArc
-            ({ start = drivingPathSegment.start
-             , end = drivingPathSegment.end
-             , bendPercentage = drivingPathSegment.bendPercentage
-             }
-                |> drivingPathSegmentToArc2d
-            )
-            [ Svg.Attributes.strokeWidth (drivingPathStrokeWidth |> Quantity.multiplyBy 0.35 |> Length.inMeters |> String.fromFloat)
+            [ Svg.Attributes.strokeWidth (drivingPathStrokeWidth |> Quantity.multiplyBy 0.5 |> Length.inMeters |> String.fromFloat)
             , Svg.Attributes.stroke (Color.rgba 0.75 0.95 1 1 |> Color.toCssString)
             , Svg.Attributes.fill "none"
 
@@ -2121,21 +2141,21 @@ drivingPath =
       , drivingDirection = Backwards
       }
         |> arcToRightToLineSegments
-    , { start = Point2d.meters 63 1
+    , { start = Point2d.meters 63.9 2.2
       , end = Point2d.meters 68 1
       , bendPercentage = 0.5
       , drivingDirection = Forwards
       }
         |> arcToRightToLineSegments
-    , { start = Point2d.meters 71.2 1.7
-      , end = Point2d.meters 67 2
-      , bendPercentage = 0.5
+    , { start = Point2d.meters 72.2 1.1
+      , end = Point2d.meters 67.9 1.6
+      , bendPercentage = 0.4
       , drivingDirection = Backwards
       }
         |> arcToRightToLineSegments
-    , { start = Point2d.meters 71 1
+    , { start = Point2d.meters 72 0.2
       , end = Point2d.meters 80 1
-      , bendPercentage = 0.8
+      , bendPercentage = 0.75
       , drivingDirection = Forwards
       }
         |> arcToRightToLineSegments
