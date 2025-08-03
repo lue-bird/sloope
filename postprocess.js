@@ -1,5 +1,6 @@
 // @ts-check
 import * as swc from "@swc/core";
+import * as EOL2 from "elm-optimize-level-2";
 
 export default async function postprocess({
     code,
@@ -12,7 +13,7 @@ export default async function postprocess({
             return patch(targetName, code);
 
         case "optimize":
-            return minify(patch(targetName, code));
+            return minify(patch(targetName, await EOL2.transform(code, /*03*/ true)));
 
         default:
             throw new Error(

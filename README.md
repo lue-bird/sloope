@@ -17,7 +17,6 @@ and open the shown http link.
 - bundle and upload final build to itch page AND add to jam!
 
 ### only if time
-- optimize (especially add eol2 -03)
 - add fumes / trail when accelerating
 - add more props
 - add camera effects like zoom depending on speed or slight angling (= more zoomed in the start)
@@ -29,3 +28,4 @@ and open the shown http link.
 - fix bug where rotational velocity is affected by user-input-affected wheel force
   (currently it over-rotates in the opposite direction of wheel grip)
   (tried to fix it, no dice)
+- optimize
