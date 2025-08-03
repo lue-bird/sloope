@@ -35,6 +35,7 @@ port playAudio :
     { name : String
     , volume : Float
     , playbackRate : Float
+    , loop : Bool
     }
     -> Cmd event_
 
@@ -211,9 +212,16 @@ reactToEvent event state =
             ( { state
                 | specific = StateGameplay initialGameplayState
               }
-            , Time.now
-                |> Task.perform StartTimeReceived
-              -- TODO play music
+            , [ Time.now
+                    |> Task.perform StartTimeReceived
+              , playAudio
+                    { name = "music"
+                    , volume = 0.5
+                    , playbackRate = 1
+                    , loop = True
+                    }
+              ]
+                |> Cmd.batch
             )
 
         RespawnKeyDown ->
@@ -273,6 +281,7 @@ reactToEvent event state =
                                     { name = "tough-motorbike-decelerate"
                                     , playbackRate = 1.35
                                     , volume = 0.051
+                                    , loop = False
                                     }
 
                             GameplayKeyArrowRight ->
@@ -280,6 +289,7 @@ reactToEvent event state =
                                     { name = "motorbike-accelerate"
                                     , playbackRate = 1
                                     , volume = 0.465
+                                    , loop = False
                                     }
 
                       else
