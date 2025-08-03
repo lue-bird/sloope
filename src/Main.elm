@@ -198,17 +198,17 @@ gameplayKeyJsonDecoder =
 
 
 reactToEvent : Event -> State -> ( State, Cmd Event )
-reactToEvent event state_ =
+reactToEvent event state =
     case event of
         WindowSized newSize ->
-            ( { state_
+            ( { state
                 | windowSize = newSize
               }
             , Cmd.none
             )
 
         StartButtonPressed ->
-            ( { state_
+            ( { state
                 | specific = StateGameplay initialGameplayState
               }
             , Time.now
@@ -217,35 +217,35 @@ reactToEvent event state_ =
             )
 
         RespawnKeyDown ->
-            case state_.specific of
+            case state.specific of
                 StateGameplay _ ->
-                    ( { state_
+                    ( { state
                         | specific = StateGameplay initialGameplayState
                       }
                     , Time.now
                         |> Task.perform StartTimeReceived
                     )
 
-                _ ->
-                    ( state_, Cmd.none )
+                StateMenu ->
+                    ( state, Cmd.none )
 
         StartTimeReceived startTime ->
-            case state_.specific of
+            case state.specific of
                 StateGameplay gameplayState ->
-                    ( { state_
+                    ( { state
                         | specific =
                             StateGameplay { gameplayState | startTime = Just startTime }
                       }
                     , Cmd.none
                     )
 
-                _ ->
-                    ( state_, Cmd.none )
+                StateMenu ->
+                    ( state, Cmd.none )
 
         GameplayKeyDown gameplayKey ->
-            case state_.specific of
+            case state.specific of
                 StateGameplay gameplayState ->
-                    ( { state_
+                    ( { state
                         | specific =
                             StateGameplay
                                 (case gameplayKey of
@@ -286,13 +286,13 @@ reactToEvent event state_ =
                         Cmd.none
                     )
 
-                _ ->
-                    ( state_, Cmd.none )
+                StateMenu ->
+                    ( state, Cmd.none )
 
         GameplayKeyUp gameplayKey ->
-            case state_.specific of
+            case state.specific of
                 StateGameplay gameplayState ->
-                    ( { state_
+                    ( { state
                         | specific =
                             StateGameplay
                                 (case gameplayKey of
@@ -306,32 +306,32 @@ reactToEvent event state_ =
                     , Cmd.none
                     )
 
-                _ ->
-                    ( state_, Cmd.none )
+                StateMenu ->
+                    ( state, Cmd.none )
 
         SimulationTick currentTime ->
-            case state_.specific of
-                StateGameplay state ->
-                    case state.lastSimulationTime of
+            case state.specific of
+                StateGameplay gameplayState ->
+                    case gameplayState.lastSimulationTime of
                         Nothing ->
-                            ( { state_
+                            ( { state
                                 | specific =
                                     StateGameplay
-                                        { state | lastSimulationTime = Just currentTime }
+                                        { gameplayState | lastSimulationTime = Just currentTime }
                               }
                             , Cmd.none
                             )
 
                         Just lastSimulationTime ->
                             if
-                                ((state.motorbikeCenter |> Point2d.yCoordinate)
+                                ((gameplayState.motorbikeCenter |> Point2d.yCoordinate)
                                     |> Quantity.lessThanOrEqualTo belowIsRespawn
                                 )
-                                    || ((state.motorbikeCenter |> Point2d.yCoordinate)
+                                    || ((gameplayState.motorbikeCenter |> Point2d.yCoordinate)
                                             |> Quantity.greaterThanOrEqualTo minimumDeathHeight
                                        )
                             then
-                                ( { state_
+                                ( { state
                                     | specific =
                                         StateGameplay
                                             initialGameplayState
@@ -352,10 +352,10 @@ reactToEvent event state_ =
                                         let
                                             newMotorbikeWheelAngle : Quantity Float Angle.Radians
                                             newMotorbikeWheelAngle =
-                                                state.motorbikeWheelAngle
+                                                gameplayState.motorbikeWheelAngle
                                                     |> Quantity.minus
                                                         (Angle.turns
-                                                            (((state.playerInputSpeed
+                                                            (((gameplayState.playerInputSpeed
                                                                 |> Quantity.for Duration.second
                                                                 |> Length.inMeters
                                                                 |> abs
@@ -366,7 +366,7 @@ reactToEvent event state_ =
                                                              )
                                                                 ^ -- keep spinning even when input is faint
                                                                   0.21
-                                                                * (state.playerInputSpeed
+                                                                * (gameplayState.playerInputSpeed
                                                                     |> Quantity.for Duration.second
                                                                     |> Quantity.sign
                                                                   )
@@ -379,18 +379,18 @@ reactToEvent event state_ =
 
                                             newPlayerInputSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
                                             newPlayerInputSpeed =
-                                                state.playerInputSpeed
+                                                gameplayState.playerInputSpeed
                                                     |> Quantity.multiplyBy 0.89
                                                     |> Quantity.plus
                                                         (Length.meters
                                                             (0.1
-                                                                * ((if state.forwardsInputActive then
+                                                                * ((if gameplayState.forwardsInputActive then
                                                                         1
 
                                                                     else
                                                                         0
                                                                    )
-                                                                    + (if state.backwardsInputActive then
+                                                                    + (if gameplayState.backwardsInputActive then
                                                                         -1
 
                                                                        else
@@ -407,7 +407,7 @@ reactToEvent event state_ =
 
                                             newMotorbikeVelocity : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
                                             newMotorbikeVelocity =
-                                                state.motorbikeVelocity
+                                                gameplayState.motorbikeVelocity
                                                     |> Vector2d.plus
                                                         (gravity
                                                             |> Vector2d.for durationSinceLastTick
@@ -421,7 +421,7 @@ reactToEvent event state_ =
                                             newMotorbikeRotationalSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
                                             newMotorbikeRotationalSpeed =
                                                 -- prefer straightened out to current velocity direction?
-                                                state.motorbikeRotationalSpeed
+                                                gameplayState.motorbikeRotationalSpeed
                                                     |> Quantity.multiplyBy 0.99
                                                     |> quantityClampAbsToAtMost
                                                         (Length.meters 0.9
@@ -440,16 +440,16 @@ reactToEvent event state_ =
                                                           )
                                                     )
                                         in
-                                        { state
+                                        { gameplayState
                                             | lastSimulationTime = Just currentTime
                                             , motorbikeRotationalSpeed = newMotorbikeRotationalSpeed
                                             , motorbikeAngle =
-                                                state.motorbikeAngle
+                                                gameplayState.motorbikeAngle
                                                     |> Quantity.plus newMotorbikeRotationToApply
                                                     |> Angle.normalize
                                             , motorbikeVelocity = newMotorbikeVelocity
                                             , motorbikeCenter =
-                                                state.motorbikeCenter
+                                                gameplayState.motorbikeCenter
                                                     |> Point2d.translateBy
                                                         (newMotorbikeVelocity
                                                             |> Vector2d.for durationSinceLastTick
@@ -458,7 +458,7 @@ reactToEvent event state_ =
                                             , motorbikeWheelAngle = newMotorbikeWheelAngle
                                         }
                                 in
-                                ( { state_
+                                ( { state
                                     | specific =
                                         StateGameplay
                                             (simulateCollisionWithPeek
@@ -466,14 +466,14 @@ reactToEvent event state_ =
                                                 , peekStateIfNoCollision = peekStateIfNoCollision
                                                 , durationSinceLastTick = durationSinceLastTick
                                                 }
-                                                state
+                                                gameplayState
                                             )
                                   }
                                 , Cmd.none
                                 )
 
-                _ ->
-                    ( state_, Cmd.none )
+                StateMenu ->
+                    ( state, Cmd.none )
 
 
 simulateCollisionWithPeek :
@@ -631,16 +631,6 @@ simulateCollisionWithPeek config state =
             state
 
 
-direction2dSimilarity : Direction2d () -> Direction2d () -> Float
-direction2dSimilarity a b =
-    (a |> Direction2d.toVector)
-        |> Vector2d.plus
-            (b |> Direction2d.toVector)
-        |> Vector2d.half
-        |> Vector2d.length
-        |> Quantity.unwrap
-
-
 motorcycleWouldCollide :
     { center : Point2d Length.Meters ()
     , angle : Angle
@@ -712,21 +702,6 @@ wheelCombinedCollisionForce stateBeforeCollision =
                     Vector2d.zero
                 |> Vector2d.scaleBy
                     (1 / (forces |> List.length |> Basics.toFloat))
-
-
-lineSegment2dOrderEndpointsByStartXLessThanEndX :
-    LineSegment2d Length.Meters ()
-    -> LineSegment2d Length.Meters ()
-lineSegment2dOrderEndpointsByStartXLessThanEndX lineSegment2d =
-    if
-        (lineSegment2d |> LineSegment2d.startPoint |> Point2d.xCoordinate)
-            |> Quantity.greaterThanOrEqualTo
-                (lineSegment2d |> LineSegment2d.endPoint |> Point2d.xCoordinate)
-    then
-        lineSegment2d |> LineSegment2d.reverse
-
-    else
-        lineSegment2d
 
 
 wheelCollisionsWithDrivingPath :
@@ -1276,21 +1251,17 @@ gameplayStateToSvg windowSize state =
                             , bendPercentage = drivingPathSegment.bendPercentage
                             }
                                 |> drivingPathSegmentToArc2d
-
-                        shadowLeftStart : Point2d Length.Meters ()
-                        shadowLeftStart =
-                            geometry |> Arc2d.startPoint
                     in
                     Svg.path
                         [ Svg.Attributes.d
                             (Svg.PathD.pathD
                                 (Svg.PathD.M
-                                    (shadowLeftStart
+                                    (drivingPathSegment.start
                                         |> Point2d.toTuple Length.inMeters
                                     )
                                     :: (geometry |> pathDArc)
                                     ++ [ Svg.PathD.L
-                                            (shadowLeftStart
+                                            (drivingPathSegment.start
                                                 |> Point2d.translateBy
                                                     (Vector2d.meters 0 -1000
                                                         |> Vector2d.rotateBy
@@ -1723,47 +1694,6 @@ drivingPathSvg =
     drivingPath
         |> List.map drivingPathSegmentToSvg
         |> Svg.g []
-
-
-svgDefinitions : Svg event_
-svgDefinitions =
-    Svg.defs
-        []
-        [ Svg.filter [ Svg.Attributes.id "glow" ]
-            [ Svg.feGaussianBlur
-                [ Svg.Attributes.stdDeviation "5"
-                , Svg.Attributes.result "coloredBlur"
-                ]
-                []
-            , Svg.feMerge
-                []
-                [ Svg.feMergeNode [ Svg.Attributes.in_ "coloredBlur" ] []
-                , Svg.feMergeNode
-                    [ Svg.Attributes.in_ "SourceGraphic" ]
-                    []
-                ]
-            ]
-        , Svg.filter
-            [ Svg.Attributes.id "grassy" ]
-            [ Svg.feTurbulence
-                [ Svg.Attributes.type_ "turbulence"
-                , Svg.Attributes.baseFrequency "0.012 0.02"
-                , Svg.Attributes.numOctaves "2"
-                , Svg.Attributes.result "turbulence"
-                , Svg.Attributes.seed "1"
-                , Svg.Attributes.stitchTiles "stitch"
-                ]
-                []
-            , Svg.feDisplacementMap
-                [ Svg.Attributes.in_ "SourceGraphic"
-                , Svg.Attributes.in2 "turbulence"
-                , Svg.Attributes.scale "50"
-                , Svg.Attributes.xChannelSelector "R"
-                , Svg.Attributes.yChannelSelector "G"
-                ]
-                []
-            ]
-        ]
 
 
 motorbikeToSvg :
@@ -2405,16 +2335,3 @@ listIsFilled list =
 
         [] ->
             False
-
-
-listLast : List a -> Maybe a
-listLast list =
-    case list of
-        [] ->
-            Nothing
-
-        [ onlyElement ] ->
-            Just onlyElement
-
-        _ :: filledTail ->
-            listLast filledTail
