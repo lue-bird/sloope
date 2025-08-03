@@ -101,9 +101,9 @@ initialState =
     , backwardsInputActive = False
     , motorbikeCenter =
         -- change to get a "checkpoint"
-        -- TODO Point2d.meters -0.6 0.5
-        Point2d.meters 110 7
-    , motorbikeVelocity =
+        Point2d.meters -0.6 0.5
+    , -- Point2d.meters 110 7
+      motorbikeVelocity =
         Vector2d.meters 0.2 0
             |> Vector2d.per Duration.second
     , motorbikeAngle = Angle.turns -0.12
@@ -230,7 +230,7 @@ reactToEvent event state =
                 Just lastSimulationTime ->
                     if
                         ((state.motorbikeCenter |> Point2d.yCoordinate)
-                            |> Quantity.lessThanOrEqualTo maximumDeathHeight
+                            |> Quantity.lessThanOrEqualTo belowIsRespawn
                         )
                             || ((state.motorbikeCenter |> Point2d.yCoordinate)
                                     |> Quantity.greaterThanOrEqualTo minimumDeathHeight
@@ -888,8 +888,8 @@ gravity =
         |> Vector2d.per Duration.second
 
 
-maximumDeathHeight : Length
-maximumDeathHeight =
+belowIsRespawn : Length
+belowIsRespawn =
     drivingPath
         |> List.foldl
             (\segment soFar ->
@@ -1019,7 +1019,7 @@ stateToDocument state =
                     ++ (state.windowSize.height |> String.fromFloat)
                 )
             ]
-            [ -- svgDefinitions
+            [ -- svgDefinitions,
               Svg.rect
                 [ Svg.Attributes.width (state.windowSize.width |> px)
                 , Svg.Attributes.height (state.windowSize.height |> px)
@@ -1086,7 +1086,7 @@ stateToDocument state =
                                                                 |> Vector2d.rotateBy
                                                                     (Angle.turns
                                                                         (-0.07
-                                                                            - 0.212
+                                                                            - 0.2
                                                                             * levelProgress
                                                                         )
                                                                     )
@@ -1102,7 +1102,7 @@ stateToDocument state =
                                         0
                                         0
                                         0.07
-                                        (0.2 + 0.29 * levelProgress)
+                                        (0.2 + 0.2 * levelProgress)
                                         |> Color.toCssString
                                     )
                                 ]
@@ -1120,7 +1120,7 @@ stateToDocument state =
                             [ Svg.text "arrow keys →/← to" ]
                         ]
                     ]
-                , svgTranslated { x = -1.19, y = 0.36 }
+                , svgTranslated { x = -1.12, y = 0.36 }
                     [ svgScaled { x = 1, y = -1 }
                         [ Svg.text_
                             [ Svg.Attributes.fontSize "0.19"
@@ -1129,7 +1129,9 @@ stateToDocument state =
                             [ Svg.text """🌷""" ]
                         ]
                     ]
-                , svgTranslated { x = 5.19, y = -2.56 }
+                , -- TODO consider "༄" and "𖤣𖥧" and "⚘" and "⸙" and "𖥸" and "🪴" atop the temple
+                  -- and
+                  svgTranslated { x = 5.19, y = -2.56 }
                     [ svgScaled { x = 1, y = -1 }
                         [ Svg.text_
                             [ Svg.Attributes.fontSize "0.1"
@@ -1156,13 +1158,23 @@ stateToDocument state =
                             [ Svg.text """🌺""" ]
                         ]
                     ]
-                , svgTranslated { x = 0, y = -0.2 }
+                , svgTranslated { x = 0, y = -0.1 }
                     [ svgScaled { x = 1, y = -1 }
                         [ Svg.text_
-                            [ Svg.Attributes.fontSize "1"
+                            [ Svg.Attributes.fontSize "0.73"
                             , Svg.Attributes.fill (Color.rgba 1 1 1 1 |> Color.toCssString)
                             ]
                             [ Svg.text """⛩️""" ]
+                        ]
+                    ]
+                , svgTranslated { x = 1.05, y = -0.04 }
+                    [ svgScaled { x = 1, y = -1 }
+                        [ Svg.text_
+                            [ Svg.Attributes.fontSize "0.27"
+                            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                            , Svg.Attributes.fontWeight "bold"
+                            ]
+                            [ Svg.text """🚩""" ]
                         ]
                     ]
                 , svgTranslated { x = 0.4, y = -0.3 }
@@ -1870,7 +1882,7 @@ drivingPath =
     , { start = Point2d.meters 101.2 14
       , end = Point2d.meters 120 14
       , drivingDirection = Forwards
-      , bendPercentage = 0.95
+      , bendPercentage = 0.9
       }
         |> arcToRightToLineSegments
     ]
