@@ -4,6 +4,6 @@
     "elm-watch": "^2.0.0-beta.6"
   },
   "scripts": {
-    "build": "elm-watch make --optimize"
+    "build": "elm-watch make --optimize && rm -r dist && mkdir dist && mkdir dist/build && cp index.html dist/index.html && cp build/main.js dist/build/main.js && cp -r public dist/public"
   }
 }
