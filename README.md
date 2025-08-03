@@ -1,5 +1,3 @@
-> in development
-
 # veloop
 ride your motorbike on a line with loops and tricks and try not to fall.
 
@@ -12,11 +10,10 @@ npx elm-watch hot
 ```
 and open the shown http link.
 
-## TODO
-- music (50%)
-- bundle and upload final build to itch page AND add to jam!
+### ideas for improvement
+I will very likely not work on this further
+but if you're interested, here's the things I didn't manage in jam time
 
-### only if time
 - add fumes / trail when accelerating
 - add more props
 - add camera effects like zoom depending on speed or slight angling (= more zoomed in the start)
