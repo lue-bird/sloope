@@ -19,7 +19,6 @@ and open the shown http link.
 - at "take speed", remove the backoff, instead continue big line all the way down
 
 ### only if time
-- r to reset + explain
 - optimize
 - add fumes when accelerating
 - add props

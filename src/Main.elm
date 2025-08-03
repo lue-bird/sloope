@@ -71,6 +71,7 @@ type alias GameplayState =
 type Event
     = WindowSized { width : Float, height : Float }
     | StartButtonPressed
+    | RespawnKeyDown
     | StartTimeReceived Time.Posix
     | SimulationTick Time.Posix
     | GameplayKeyDown GameplayKey
@@ -152,10 +153,26 @@ stateToSubscriptions state =
                 (Json.Decode.map GameplayKeyDown gameplayKeyJsonDecoder)
             , Browser.Events.onKeyUp
                 (Json.Decode.map GameplayKeyUp gameplayKeyJsonDecoder)
+            , Browser.Events.onKeyDown
+                (Json.Decode.map (\() -> RespawnKeyDown) respawnKeyJsonDecoder)
             ]
                 |> Sub.batch
     ]
         |> Sub.batch
+
+
+respawnKeyJsonDecoder : Json.Decode.Decoder ()
+respawnKeyJsonDecoder =
+    Json.Decode.andThen
+        (\key ->
+            case key of
+                "r" ->
+                    Json.Decode.succeed ()
+
+                _ ->
+                    Json.Decode.fail "unknown key, ignore"
+        )
+        (Json.Decode.field "key" Json.Decode.string)
 
 
 type GameplayKey
@@ -196,7 +213,21 @@ reactToEvent event state_ =
               }
             , Time.now
                 |> Task.perform StartTimeReceived
+              -- TODO play music
             )
+
+        RespawnKeyDown ->
+            case state_.specific of
+                StateGameplay _ ->
+                    ( { state_
+                        | specific = StateGameplay initialGameplayState
+                      }
+                    , Time.now
+                        |> Task.perform StartTimeReceived
+                    )
+
+                _ ->
+                    ( state_, Cmd.none )
 
         StartTimeReceived startTime ->
             case state_.specific of
