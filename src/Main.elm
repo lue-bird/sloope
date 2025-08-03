@@ -485,10 +485,10 @@ simulateCollisionWithPeek :
     -> GameplayState
 simulateCollisionWithPeek config state =
     if config.countOfAttemptsTryingToResolve >= 25 then
-        let
-            _ =
-                Debug.log "failed to resolve collision, potentially clipping" ()
-        in
+        -- let
+        --     _ =
+        --         Debug.log "failed to resolve collision, potentially clipping" ()
+        -- in
         -- clip, which will look like a bug to the user
         -- illegal state but what else is there to do.
         -- I think reaching this state (which is actually reached sometimes currently)
@@ -765,7 +765,8 @@ wheelCollisionsWithDrivingPathSegment wheelGeometry drivingPathSegment =
         -- bounce off the side
         case drivingPathSegmentAsVeryRoughApproximateLineSegment |> LineSegment2d.axis of
             Nothing ->
-                Debug.todo "*sob*"
+                -- Debug.todo "*sob*"
+                []
 
             Just segmentAxis ->
                 let
@@ -892,7 +893,8 @@ lineSegment2dCollidesWithCircle :
 lineSegment2dCollidesWithCircle circle lineSegment =
     case lineSegment.points |> LineSegment2d.direction of
         Nothing ->
-            Debug.todo "huh??"
+            -- invalid line segment
+            Nothing
 
         Just lineSegmentDirection ->
             if
