@@ -15,8 +15,6 @@ and open the shown http link.
 ## TODO
 - add itch page (ugh)
 - music (50%)
-- background go from friendly to current red (preferably even a bit of gradient)
-- at "take speed", remove the backoff, instead continue big line all the way down
 
 ### only if time
 - optimize
