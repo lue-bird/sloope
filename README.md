@@ -16,8 +16,6 @@ and open the shown http link.
 - add itch page (ugh)
 - menu as in a start button
 - music (50%)
-- fix bug where rotational velocity is affected by user-input-affected wheel force
-  (currently it over-rotates in the opposite direction of wheel grip)
 
 ### only if time
 - add fumes when accelerating
@@ -28,3 +26,6 @@ and open the shown http link.
 - apply effects like gradients to shadows or glow to platforms
 - collectibles
 - more path
+- fix bug where rotational velocity is affected by user-input-affected wheel force
+  (currently it over-rotates in the opposite direction of wheel grip)
+  (tried to fix it, no dice)

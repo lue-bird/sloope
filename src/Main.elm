@@ -588,11 +588,6 @@ wheelCombinedCollisionForce stateBeforeCollision =
                                     |> rotationalSpeedAtAngle
                                         stateBeforeCollision.wheelRotateDirection
                                 )
-                            |> Vector2d.mirrorAcross
-                                (intersectingLineSegment
-                                    |> LineSegment2d.axis
-                                    |> Maybe.withDefault Axis2d.x
-                                )
                             |> Vector2d.plus
                                 (Vector2d.withLength
                                     -- signed length!
@@ -605,6 +600,11 @@ wheelCombinedCollisionForce stateBeforeCollision =
                                     )
                                     |> Vector2d.per Duration.second
                                     |> Vector2d.scaleBy 15
+                                )
+                            |> Vector2d.mirrorAcross
+                                (intersectingLineSegment
+                                    |> LineSegment2d.axis
+                                    |> Maybe.withDefault Axis2d.x
                                 )
                         )
                             :: forceSoFar
