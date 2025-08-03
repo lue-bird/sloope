@@ -2,5 +2,6 @@ elm-stuff
 node_modules
 build
 dist
+dist.zip
 zombie
 package-lock.json
