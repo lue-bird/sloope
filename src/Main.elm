@@ -1104,29 +1104,9 @@ menuStateToHtml windowSize =
         []
     , svgTranslated
         { x = windowSize.width / 2
-        , y = windowSize.height * 0.4
-        }
-        [ Svg.text_
-            [ Svg.Attributes.fontSize "19"
-            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
-            , Svg.Attributes.textAnchor "middle"
-            , Svg.Attributes.pointerEvents "none"
-            ]
-            [ Svg.text "Hint: r to respawn, no need to refresh" ]
-        ]
-    , svgTranslated
-        { x = windowSize.width / 2
         , y = windowSize.height / 2
         }
-        [ Svg.text_
-            [ Svg.Attributes.fontSize "49"
-            , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
-            , Svg.Attributes.textAnchor "middle"
-            , Svg.Attributes.pointerEvents "none"
-            , Svg.Attributes.fontWeight "bold"
-            ]
-            [ Svg.text "space/click to start" ]
-        , let
+        [ let
             windowScale : Float
             windowScale =
                 Basics.min
@@ -1136,6 +1116,28 @@ menuStateToHtml windowSize =
           in
           svgScaled { x = windowScale, y = -windowScale }
             [ svgTranslated
+                { x = 0, y = 0.7 }
+                [ svgScaled { x = 1, y = -1 }
+                    [ Svg.text_
+                        [ Svg.Attributes.fontSize "0.14"
+                        , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                        , Svg.Attributes.textAnchor "middle"
+                        , Svg.Attributes.pointerEvents "none"
+                        ]
+                        [ Svg.text "Hint: r to respawn, no need to refresh" ]
+                    ]
+                ]
+            , svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.49"
+                    , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                    , Svg.Attributes.textAnchor "middle"
+                    , Svg.Attributes.pointerEvents "none"
+                    , Svg.Attributes.fontWeight "bold"
+                    ]
+                    [ Svg.text "space/click to start" ]
+                ]
+            , svgTranslated
                 { x = 0
                 , y = -1.5
                 }

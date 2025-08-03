@@ -13,7 +13,6 @@ npx elm-watch hot
 and open the shown http link.
 
 ## TODO
-- make font size in title screen relative to window dimensions
 - music (50%)
 - bundle and upload final build to itch page AND add to jam!
 
