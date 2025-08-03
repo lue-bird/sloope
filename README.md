@@ -13,8 +13,8 @@ npx elm-watch hot
 and open the shown http link.
 
 ## TODO
-- add itch page (ugh)
 - music (50%)
+- bundle and upload to itch page
 
 ### only if time
 - optimize
