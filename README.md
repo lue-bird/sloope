@@ -18,7 +18,7 @@ and open the shown http link.
 - bundle and upload final build to itch page AND add to jam!
 
 ### only if time
-- optimize
+- optimize (especially add eol2 -03)
 - add fumes / trail when accelerating
 - add more props
 - add camera effects like zoom depending on speed or slight angling (= more zoomed in the start)
