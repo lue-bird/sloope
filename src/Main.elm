@@ -1348,8 +1348,7 @@ textsAndScenerySvg =
                     [ Svg.text """🌷""" ]
                 ]
             ]
-        , -- TODO consider "𖥸"
-          svgTranslated { x = 5.19, y = -2.56 }
+        , svgTranslated { x = 5.19, y = -2.56 }
             [ svgScaled { x = 1, y = -1 }
                 [ Svg.text_
                     [ Svg.Attributes.fontSize "0.1"
