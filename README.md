@@ -26,3 +26,5 @@ and open the shown http link.
 - wheels on both sides of a line should be prevented by adding collision to the connection from back to front wheel
 - angle of arcs is based on connection between start and end, not actual angle
 - apply effects like gradients to shadows or glow to platforms
+- collectibles
+- more path
