@@ -420,7 +420,7 @@ reactToEvent event state_ =
 
                                             newMotorbikeRotationalSpeed : Quantity Float (Quantity.Rate Length.Meters Duration.Seconds)
                                             newMotorbikeRotationalSpeed =
-                                                -- TODO prefer straightened out to current velocity direction
+                                                -- prefer straightened out to current velocity direction?
                                                 state.motorbikeRotationalSpeed
                                                     |> Quantity.multiplyBy 0.99
                                                     |> quantityClampAbsToAtMost
@@ -516,8 +516,6 @@ simulateCollisionWithPeek config state =
 
     else
         let
-            -- TODO apply user input directly to wheel
-            -- not sure how exactly?
             backWheelForce : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
             backWheelForce =
                 wheelCombinedCollisionForce
@@ -559,17 +557,6 @@ simulateCollisionWithPeek config state =
             combinedNonRotationalForceToApply : Vector2d (Quantity.Rate Length.Meters Duration.Seconds) ()
             combinedNonRotationalForceToApply =
                 combinedNonRotationalWheelForce
-                    |> -- reducing this helps keep
-                       -- the motorbike grounded
-                       -- TODO only scale down by how destructive the
-                       -- config.peekStateIfNoCollision.motorbikeVelocity is
-                       -- e.g. if both are in the same direction
-                       -- if they are opposite, do like 0.5.
-                       -- to do that, take peek velocity and for each component
-                       -- set to 0 if opposite to force direction
-                       -- then finally multiply both, each abs
-                       Vector2d.scaleBy
-                        1
                     |> vector2dClampToMaxLength
                         (Length.meters 5.2
                             |> Quantity.per Duration.second
@@ -1129,11 +1116,12 @@ stateToHtml state =
         )
 
 
+menuStateToHtml : { width : Float, height : Float } -> List (Svg Event)
 menuStateToHtml windowSize =
     [ Svg.rect
         [ Svg.Attributes.width (windowSize.width |> px)
         , Svg.Attributes.height (windowSize.height |> px)
-        , Svg.Attributes.fill (Color.rgb 0 0.08 0.2 |> Color.toCssString)
+        , Svg.Attributes.fill (Color.rgb 0 0.2 0.2 |> Color.toCssString)
         , Svg.Events.onMouseDown StartButtonPressed
         ]
         []
@@ -1240,11 +1228,22 @@ spaceKeyJsonDecoder =
 
 gameplayStateToSvg : { width : Float, height : Float } -> GameplayState -> List (Svg Event)
 gameplayStateToSvg windowSize state =
+    let
+        levelProgress : Float
+        levelProgress =
+            (state.motorbikeCenter
+                |> Point2d.xCoordinate
+                |> Length.inMeters
+            )
+                / (drivingPathFullLength
+                    |> Length.inMeters
+                  )
+    in
     [ -- not used because slow to render svgDefinitions,
       Svg.rect
         [ Svg.Attributes.width (windowSize.width |> px)
         , Svg.Attributes.height (windowSize.height |> px)
-        , Svg.Attributes.fill (Color.rgb 0.2 0 0.08 |> Color.toCssString)
+        , Svg.Attributes.fill (Color.rgb (0.3 * levelProgress) (0.2 * (1 - levelProgress)) (0.2 * (1 - levelProgress)) |> Color.toCssString)
         ]
         []
     , let
@@ -1281,16 +1280,6 @@ gameplayStateToSvg windowSize state =
                         shadowLeftStart : Point2d Length.Meters ()
                         shadowLeftStart =
                             geometry |> Arc2d.startPoint
-
-                        levelProgress : Float
-                        levelProgress =
-                            (state.motorbikeCenter
-                                |> Point2d.xCoordinate
-                                |> Length.inMeters
-                            )
-                                / (drivingPathFullLength
-                                    |> Length.inMeters
-                                  )
                     in
                     Svg.path
                         [ Svg.Attributes.d
@@ -1332,7 +1321,7 @@ gameplayStateToSvg windowSize state =
             |> Svg.g
                 []
         , drivingPathSvg
-        , textsSvg
+        , textsAndScenerySvg
         ]
             |> svgTranslated
                 { x = -cameraPosition.x
@@ -1351,8 +1340,8 @@ gameplayStateToSvg windowSize state =
     ]
 
 
-textsSvg : Svg event_
-textsSvg =
+textsAndScenerySvg : Svg event_
+textsAndScenerySvg =
     Svg.g
         [ Svg.Attributes.pointerEvents "none"
         ]
@@ -1394,7 +1383,7 @@ textsSvg =
                     [ Svg.text """𓍊𓋼𓍊𓋼𓍊𓍊𓋼𓍊𓋼𓍊""" ]
                 ]
             ]
-        , svgTranslated { x = 10, y = -0.9 }
+        , svgTranslated { x = 9.92, y = -0.9 }
             [ svgScaled { x = 1, y = -1 }
                 [ Svg.text_
                     [ Svg.Attributes.fontSize "0.101"
@@ -1408,6 +1397,7 @@ textsSvg =
                 [ Svg.text_
                     [ Svg.Attributes.fontSize "0.73"
                     , Svg.Attributes.fill (Color.rgba 1 1 1 1 |> Color.toCssString)
+                    , Svg.Attributes.style "filter: saturate(20%)"
                     ]
                     [ Svg.text """⛩️""" ]
                 ]
@@ -1500,6 +1490,89 @@ textsSvg =
                     [ Svg.text "take speed" ]
                 ]
             ]
+        , svgTranslated { x = 46, y = 4 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.2"
+                    , Svg.Attributes.fill (Color.rgba 1 1 1 0.4 |> Color.toCssString)
+                    , Svg.Attributes.fontWeight "bold"
+                    ]
+                    [ Svg.text "☁️      ☁️" ]
+                ]
+            ]
+        , svgTranslated { x = 42, y = 2 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.2"
+                    , Svg.Attributes.fill (Color.rgba 1 1 1 0.27 |> Color.toCssString)
+                    , Svg.Attributes.fontWeight "bold"
+                    ]
+                    [ Svg.text "☁️   *   ☁️" ]
+                ]
+            ]
+        , svgTranslated { x = 45.3, y = 3.4 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.2"
+                    , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                    , Svg.Attributes.fontWeight "bold"
+                    ]
+                    [ Svg.text "☁️  .    .       ☁️" ]
+                ]
+            ]
+        , List.range 0 11
+            |> List.map
+                (\i ->
+                    svgTranslated { x = 45.26, y = 3.25 - 0.19 * (i |> Basics.toFloat) }
+                        [ svgScaled { x = 1, y = -1 }
+                            [ Svg.text_
+                                [ Svg.Attributes.fontSize "0.2"
+                                , Svg.Attributes.fill (Color.rgba 0 0 0 (1 - (i |> Basics.toFloat) / 14) |> Color.toCssString)
+                                ]
+                                [ Svg.text "⛆ ⛆⛆ ⛆" ]
+                            ]
+                        ]
+                )
+            |> Svg.g []
+        , svgTranslated { x = 55, y = 2 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.8"
+                    , Svg.Attributes.fill (Color.rgba 0 0 0 0.2 |> Color.toCssString)
+                    , Svg.Attributes.fontWeight "bold"
+                    ]
+                    [ Svg.text """🌩""" ]
+                ]
+            ]
+        , svgTranslated { x = 57.4, y = 2.6 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.5"
+                    , Svg.Attributes.fill (Color.rgba 0 0 0.2 0.2 |> Color.toCssString)
+                    , Svg.Attributes.fontWeight "bold"
+                    ]
+                    [ Svg.text """🌨""" ]
+                ]
+            ]
+        , svgTranslated { x = 62, y = 3.7 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.3"
+                    , Svg.Attributes.fill (Color.rgba 0 0 0.2 1 |> Color.toCssString)
+                    ]
+                    [ Svg.text """🪧""" ]
+                ]
+            ]
+        , svgTranslated { x = 61.95, y = 3.76 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.38"
+                    , Svg.Attributes.fill (Color.rgba 0 0 0.2 1 |> Color.toCssString)
+                    , Svg.Attributes.style "filter: saturate(20%) brightness(40%)"
+                    ]
+                    [ Svg.text """☣️""" ]
+                ]
+            ]
         , svgTranslated { x = 88, y = 5.3 }
             [ svgScaled { x = 1, y = -1 }
                 [ Svg.text_
@@ -1509,12 +1582,20 @@ textsSvg =
                     [ Svg.text "keep going" ]
                 ]
             ]
+        , svgTranslated { x = 100.92, y = 14.04 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.28"
+                    , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
+                    ]
+                    [ Svg.text """🚧""" ]
+                ]
+            ]
         , svgTranslated { x = 119.925, y = 14.07 }
             [ svgScaled { x = 1, y = -1 }
                 [ Svg.text_
                     [ Svg.Attributes.fontSize "0.3"
                     , Svg.Attributes.fill (Color.rgb 1 1 1 |> Color.toCssString)
-                    , Svg.Attributes.fontWeight "bold"
                     ]
                     [ Svg.text """🚩""" ]
                 ]
@@ -1577,7 +1658,30 @@ textsSvg =
                     [ Svg.text "૮꒰˶ᵔ ᵕ ᵔ˶꒱ა" ]
                 ]
             ]
+        , svgTranslated { x = 101.9, y = 14.04 }
+            [ svgScaled { x = 1, y = -1 }
+                [ Svg.text_
+                    [ Svg.Attributes.fontSize "0.5"
+                    , Svg.Attributes.fill (toxicColor |> Color.toCssString)
+                    ]
+                    [ Svg.text """∘˙○˚.• ･ﾟ ･ﾟ·:｡･ﾟﾟ･ ⋆｡˚ °‧ 𓆝 𓆟 𓆞 ·｡ ⋆𓂃 𓈒𓏸 𓂃 𓈒𓏸 ｡ﾟ☁︎｡⋆｡ ﾟ ﾟ｡⋆⸝⸝⸝⸝⸝⸝⸝⸝⸝⸝⸝⸝⸝⸝⸝""" ]
+                ]
+            ]
+        , svgArc
+            (drivingPathSegmentToArc2d
+                { start = Point2d.meters 101.2 14
+                , end = Point2d.meters 120 14
+                , bendPercentage = 0.9
+                }
+            )
+            [ Svg.Attributes.fill (toxicColor |> Color.toCssString)
+            ]
         ]
+
+
+toxicColor : Color
+toxicColor =
+    Color.rgba 0.3 0.95 0 0.5
 
 
 drivingPathSvg : Svg Event
@@ -1999,13 +2103,7 @@ drivingPath =
       , drivingDirection = Forwards
       }
         |> arcToRightToLineSegments
-    , { start = Point2d.meters 40.5 -1.1
-      , end = Point2d.meters 41.2 0.4
-      , bendPercentage = 0.1
-      , drivingDirection = Forwards
-      }
-        |> arcToRightToLineSegments
-    , { start = Point2d.meters 40.5 -1.1
+    , { start = Point2d.meters 40 -1.2
       , end = Point2d.meters 48 3.4
       , bendPercentage = 0.3
       , drivingDirection = Forwards
@@ -2111,6 +2209,30 @@ drivingPath =
       , end = Point2d.meters 120 14
       , drivingDirection = Forwards
       , bendPercentage = 0.9
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 118.5 10.3
+      , end = Point2d.meters 118 14
+      , drivingDirection = Backwards
+      , bendPercentage = -0.8
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 101.8 14.3
+      , end = Point2d.meters 107 14.3
+      , drivingDirection = Forwards
+      , bendPercentage = 0.06
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 109.2 14.1
+      , end = Point2d.meters 113 14.3
+      , drivingDirection = Forwards
+      , bendPercentage = -0.06
+      }
+        |> arcToRightToLineSegments
+    , { start = Point2d.meters 114.9 14.2
+      , end = Point2d.meters 117.5 15
+      , drivingDirection = Forwards
+      , bendPercentage = 0.1
       }
         |> arcToRightToLineSegments
     ]

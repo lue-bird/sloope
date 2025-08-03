@@ -20,8 +20,8 @@ and open the shown http link.
 
 ### only if time
 - optimize
-- add fumes when accelerating
-- add props
+- add fumes / trail when accelerating
+- add more props
 - add camera effects like zoom depending on speed or slight angling (= more zoomed in the start)
 - wheels on both sides of a line should be prevented by adding collision to the connection from back to front wheel
 - angle of arcs is based on connection between start and end, not actual angle
