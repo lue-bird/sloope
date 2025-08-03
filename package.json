@@ -1,5 +1,9 @@
 {
   "devDependencies": {
+    "@swc/core": "^1.13.3",
     "elm-watch": "^2.0.0-beta.6"
+  },
+  "scripts": {
+    "build": "elm-watch make --optimize"
   }
 }
